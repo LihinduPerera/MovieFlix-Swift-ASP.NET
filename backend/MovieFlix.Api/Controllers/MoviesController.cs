@@ -22,16 +22,6 @@ public class MoviesController : ControllerBase
     [HttpGet]
     public async Task<IActionResult> GetMovies([FromQuery] MovieQueyRequest request)
     {
-        if(request.Page < 1)
-        {
-            return BadRequest("Page must be greater than 0.");
-        }
-
-        if(request.PageSize < 1 || request.PageSize > 100)
-        {
-            return BadRequest("Page size must be between 1 and 100.");
-        }
-
         var movies = await _movieService.GetMoviesAsync(request);
 
         return Ok(movies);
@@ -44,7 +34,10 @@ public class MoviesController : ControllerBase
 
         if (movie == null)
         {
-            return NotFound();
+            return Problem(
+                title: "Movie not found.",
+                detail: "No movie was found with the supplied ID.",
+                statusCode: StatusCodes.Status404NotFound);
         }
 
         return Ok(movie);
@@ -70,7 +63,10 @@ public class MoviesController : ControllerBase
 
         if (movie is null)
         {
-            return NotFound();
+            return Problem(
+                title: "Movie not found.",
+                detail: "No movie was found with the supplied ID.",
+                statusCode: StatusCodes.Status404NotFound);
         }
 
         return Ok(movie);
@@ -84,7 +80,10 @@ public class MoviesController : ControllerBase
 
         if(!deleted)
         {
-            return NotFound();
+            return Problem(
+                title: "Movie not found.",
+                detail: "No movie was found with the supplied ID.",
+                statusCode: StatusCodes.Status404NotFound);
         }
 
         return NoContent();
@@ -98,15 +97,25 @@ public class MoviesController : ControllerBase
     {
         if (string.IsNullOrWhiteSpace(query))
         {
-            return BadRequest("Search query is required.");
+            return Problem(
+                title: "Search query is required.",
+                detail: "Search query is required.",
+                statusCode: StatusCodes.Status400BadRequest);
         }
         if (query.Trim().Length > 200)
         {
-            return BadRequest("Search query cannot exeed 200 characters.");
+            return Problem(
+                title: "Invalid search query.",
+                detail: "Search query cannot exeed 200 characters.",
+                statusCode: StatusCodes.Status400BadRequest);
+
         }
         if (page < 1 || page > 500)
         {
-            return BadRequest("Page must be between 1 and 500.");
+            return Problem(
+                title: "Invalid page number.",
+                detail: "Page must be between 1 and 500.",
+                statusCode: StatusCodes.Status400BadRequest);
         }
 
         var results = await _tmdbService.SearchMoviesAsync(
@@ -146,7 +155,10 @@ public class MoviesController : ControllerBase
     {
         if (tmdbId <= 0)
         {
-            return BadRequest("TMDB movie ID must be greater than zero.");
+            return Problem(
+                title: "Invalid TMDB movie ID.",
+                detail: "TMDB movie ID must be greater than zero.",
+                statusCode: StatusCodes.Status400BadRequest);
         }
 
         var movie = await _tmdbService.GetMovieDetailsAsync(

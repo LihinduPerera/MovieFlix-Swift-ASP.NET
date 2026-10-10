@@ -5,6 +5,12 @@ namespace MovieFlix.Api.Exceptions;
 
 public class GlobalExceptionHandler : IExceptionHandler
 {
+    private readonly ILogger<GlobalExceptionHandler> _logger;
+    public GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger)
+    {
+        _logger = logger;
+    }
+
     public async ValueTask<bool> TryHandleAsync(
         HttpContext httpContext,
         Exception exception,
@@ -54,7 +60,20 @@ public class GlobalExceptionHandler : IExceptionHandler
             };
         }
 
-            httpContext.Response.StatusCode = problemDetails.Status!.Value;
+        if (problemDetails.Status >= 500)
+        {
+            _logger.LogError(
+                exception,
+                "A server error occurred while processing {HttpMethod} {RequestPath}. TraceId: {TraceId}",
+                httpContext.Request.Method,
+                httpContext.Request.Path,
+                httpContext.TraceIdentifier);
+        }
+
+        httpContext.Response.StatusCode = problemDetails.Status!.Value;
+
+        problemDetails.Extensions["traceId"] =
+            httpContext.TraceIdentifier;
 
         await httpContext.Response.WriteAsJsonAsync(
             problemDetails,
