@@ -27,9 +27,18 @@ public class MoviesController : ControllerBase
         return Ok(movies);
     }
 
+
     [HttpGet("{id:int}")]
     public async Task<IActionResult> GetMovie(int id)
     {
+        if (id <= 0)
+        {
+            return Problem(
+                title: "Invalid movie ID.",
+                detail: "Movie ID must be greater than zero.",
+                statusCode: StatusCodes.Status400BadRequest);
+        }
+
         var movie = await _movieService.GetMovieByIdAsync(id);
 
         if (movie == null)

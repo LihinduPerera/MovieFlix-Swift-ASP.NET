@@ -81,4 +81,24 @@ public class MoviesControllerIntegrationTests
         Assert.Equal(157336, result.TmdbId);
         Assert.Equal("Interstellar", result.Title);
     }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public async Task GetMovie_WhenIdIsNotPositive_Returns400BadRequest(int id)
+    {
+        using var factory = new MovieFlixApiFactory();
+        using var client = factory.CreateClient();
+
+        using var scope = factory.Services.CreateScope();
+
+        var dbContext = scope.ServiceProvider
+            .GetRequiredService<MovieFlixDbContext>();
+
+        await dbContext.Database.EnsureCreatedAsync();
+
+        var response = await client.GetAsync($"/api/v1/Movies/{id}");
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+    }
 }

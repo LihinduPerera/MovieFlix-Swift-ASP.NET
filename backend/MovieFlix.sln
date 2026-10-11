@@ -5,6 +5,8 @@ VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MovieFlix.Api", "MovieFlix.Api\MovieFlix.Api.csproj", "{0E38C16B-A9D3-410C-ADBD-22547DC70655}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MovieFlix.Api.Tests", "MovieFlix.Api.Tests\MovieFlix.Api.Tests.csproj", "{6FE8B55B-450F-3CE6-5046-1CB354C269C4}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -27,8 +29,23 @@ Global
 		{0E38C16B-A9D3-410C-ADBD-22547DC70655}.Release|x64.Build.0 = Release|Any CPU
 		{0E38C16B-A9D3-410C-ADBD-22547DC70655}.Release|x86.ActiveCfg = Release|Any CPU
 		{0E38C16B-A9D3-410C-ADBD-22547DC70655}.Release|x86.Build.0 = Release|Any CPU
+		{6FE8B55B-450F-3CE6-5046-1CB354C269C4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6FE8B55B-450F-3CE6-5046-1CB354C269C4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6FE8B55B-450F-3CE6-5046-1CB354C269C4}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{6FE8B55B-450F-3CE6-5046-1CB354C269C4}.Debug|x64.Build.0 = Debug|Any CPU
+		{6FE8B55B-450F-3CE6-5046-1CB354C269C4}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{6FE8B55B-450F-3CE6-5046-1CB354C269C4}.Debug|x86.Build.0 = Debug|Any CPU
+		{6FE8B55B-450F-3CE6-5046-1CB354C269C4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6FE8B55B-450F-3CE6-5046-1CB354C269C4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6FE8B55B-450F-3CE6-5046-1CB354C269C4}.Release|x64.ActiveCfg = Release|Any CPU
+		{6FE8B55B-450F-3CE6-5046-1CB354C269C4}.Release|x64.Build.0 = Release|Any CPU
+		{6FE8B55B-450F-3CE6-5046-1CB354C269C4}.Release|x86.ActiveCfg = Release|Any CPU
+		{6FE8B55B-450F-3CE6-5046-1CB354C269C4}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {9471C67A-FAA3-451E-B7D3-6AD50E6936CE}
 	EndGlobalSection
 EndGlobal
