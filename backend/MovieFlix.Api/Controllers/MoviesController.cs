@@ -1,7 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MovieFlix.Api.DTOs.Movies;
-using MovieFlix.Api.DTOs.Tmdb;
 using MovieFlix.Api.Services;
 
 namespace MovieFlix.Api.Controllers;

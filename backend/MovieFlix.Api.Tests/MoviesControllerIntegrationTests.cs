@@ -100,5 +100,16 @@ public class MoviesControllerIntegrationTests
         var response = await client.GetAsync($"/api/v1/Movies/{id}");
 
         Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+
+        var problem = await response.Content
+            .ReadFromJsonAsync<ProblemDetails>();
+
+        Assert.NotNull(problem);
+        Assert.Equal("Invalid movie ID.", problem.Title);
+        Assert.Equal(400, problem.Status);
+        Assert.Equal(
+            "Movie ID must be greater than zero.",
+            problem.Detail);
     }
+
 }
