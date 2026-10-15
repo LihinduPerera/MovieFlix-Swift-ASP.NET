@@ -1,8 +1,8 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace MovieFlix.Api.DTOs.Movies
 {
-    public class MovieQueyRequest
+    public class MovieQueryRequest
     {
         [Range(1, int.MaxValue, ErrorMessage = "Page must be greater than 0.")]
         public int Page { get; set; } = 1;

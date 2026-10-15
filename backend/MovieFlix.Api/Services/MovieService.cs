@@ -28,7 +28,7 @@ public class MovieService : IMovieService
         };
     }
 
-    public async Task<PagedResponse<MovieResponse>> GetMoviesAsync(MovieQueyRequest request)
+    public async Task<PagedResponse<MovieResponse>> GetMoviesAsync(MovieQueryRequest request)
     {
         //This is called deferred execution. IQueryable
         var query = _context.Movies
