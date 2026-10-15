@@ -21,6 +21,8 @@ namespace MovieFlix.Api.Data
 
         public DbSet<Favorite> Favorites => Set<Favorite>();
 
+        public DbSet<WatchlistItem> WatchlistItems => Set<WatchlistItem>();
+
         public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -53,6 +55,26 @@ namespace MovieFlix.Api.Data
                 {
                     favorite.UserId,
                     favorite.MovieId
+                })
+                .IsUnique();
+
+            modelBuilder.Entity<WatchlistItem>()
+                .HasOne(item => item.User)
+                .WithMany()
+                .HasForeignKey(item => item.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<WatchlistItem>()
+                .HasOne(item => item.Movie)
+                .WithMany()
+                .HasForeignKey(item => item.MovieId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<WatchlistItem>()
+                .HasIndex(item => new
+                {
+                    item.UserId,
+                    item.MovieId
                 })
                 .IsUnique();
 
