@@ -25,6 +25,8 @@ namespace MovieFlix.Api.Data
 
         public DbSet<MovieRating> MovieRatings => Set<MovieRating>();
 
+        public DbSet<WatchHistoryEntry> WatchHistoryEntries => Set<WatchHistoryEntry>();
+
         public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -104,6 +106,35 @@ namespace MovieFlix.Api.Data
             // Fast community-average lookups per movie.
             modelBuilder.Entity<MovieRating>()
                 .HasIndex(rating => rating.MovieId);
+
+            modelBuilder.Entity<WatchHistoryEntry>()
+                .HasOne(entry => entry.User)
+                .WithMany()
+                .HasForeignKey(entry => entry.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<WatchHistoryEntry>()
+                .HasOne(entry => entry.Movie)
+                .WithMany()
+                .HasForeignKey(entry => entry.MovieId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One history row per user per movie (progress is upserted).
+            modelBuilder.Entity<WatchHistoryEntry>()
+                .HasIndex(entry => new
+                {
+                    entry.UserId,
+                    entry.MovieId
+                })
+                .IsUnique();
+
+            // "Continue watching" and "recently watched" query by user + time.
+            modelBuilder.Entity<WatchHistoryEntry>()
+                .HasIndex(entry => new
+                {
+                    entry.UserId,
+                    entry.WatchedAt
+                });
 
             modelBuilder.Entity<RefreshToken>()
                 .HasOne(token => token.User)
