@@ -4,6 +4,8 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Enables `dotnet user-secrets` so secrets stay OUT of source control. -->
+    <UserSecretsId>movieflix-api-dev-secrets</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
