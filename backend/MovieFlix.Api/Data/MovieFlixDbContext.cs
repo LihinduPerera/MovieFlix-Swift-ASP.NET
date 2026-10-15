@@ -35,6 +35,8 @@ namespace MovieFlix.Api.Data
 
         public DbSet<SearchHistoryEntry> SearchHistoryEntries => Set<SearchHistoryEntry>();
 
+        public DbSet<UserPreferences> UserPreferences => Set<UserPreferences>();
+
         public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -225,6 +227,17 @@ namespace MovieFlix.Api.Data
                     entry.UserId,
                     entry.SearchedAt
                 });
+
+            // One preferences row per user (1:1).
+            modelBuilder.Entity<UserPreferences>()
+                .HasOne(preferences => preferences.User)
+                .WithOne()
+                .HasForeignKey<UserPreferences>(preferences => preferences.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<UserPreferences>()
+                .HasIndex(preferences => preferences.UserId)
+                .IsUnique();
 
             modelBuilder.Entity<RefreshToken>()
                 .HasOne(token => token.User)
