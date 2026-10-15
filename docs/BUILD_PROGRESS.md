@@ -36,17 +36,20 @@
 
 ## Phase 1 — Identity migration ⬜
 
-- [ ] 1a. Install `Microsoft.AspNetCore.Identity.EntityFrameworkCore`
-- [ ] 1b. Create `ApplicationUser : IdentityUser`
-- [ ] 1c. `MovieFlixDbContext : IdentityDbContext<ApplicationUser>` (keep Movie/Favorite config, `base.OnModelCreating`, `Favorite.UserId` → string)
-- [ ] 1d. Rewrite `AuthService` on `UserManager<ApplicationUser>`
-- [ ] 1e. Update `JwtService` + `CurrentUserService` for string user IDs
-- [ ] 1f. Role + admin seeding
-- [ ] 1g. Reset DB + regenerate migrations (Identity + Movies + Favorites)
-- [ ] 1h. Update the 6 tests + add register→login→favorites happy path
-- [ ] Refresh tokens (model + `/auth/refresh` + rotation)
+## Phase 1 — Identity migration ✅
 
-## Phase 2 — Core user features ⬜
+- [x] 1a. Install `Microsoft.AspNetCore.Identity.EntityFrameworkCore`
+- [x] 1b. Create `ApplicationUser : IdentityUser`
+- [x] 1c. `MovieFlixDbContext : IdentityDbContext<ApplicationUser>` (keep Movie/Favorite config, `base.OnModelCreating`, `Favorite.UserId` → string)
+- [x] 1d. Rewrite `AuthService` on `UserManager<ApplicationUser>`
+- [x] 1e. Update `JwtService` + `CurrentUserService` for string user IDs
+- [x] 1f. Role + admin seeding (DatabaseSeeder)
+- [x] 1g. Reset DB + regenerate migrations (Identity + Movies + Favorites + RefreshTokens)
+- [x] 1h. Update tests to use UserManager + ApplicationUser
+- [x] Refresh tokens (model + `/auth/refresh` + `/auth/logout` + rotation + revocation)
+
+- [ ] 2a. Watchlist
+- [ ] 2b. Movie Ratings (+ community average)
 
 - [ ] 2a. Watchlist
 - [ ] 2b. Movie Ratings (+ community average)
