@@ -69,6 +69,7 @@ builder.Services.AddScoped<IRatingService, RatingService>();
 builder.Services.AddScoped<IWatchHistoryService, WatchHistoryService>();
 builder.Services.AddScoped<IReviewService, ReviewService>();
 builder.Services.AddScoped<ICollectionService, CollectionService>();
+builder.Services.AddScoped<ISearchHistoryService, SearchHistoryService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();

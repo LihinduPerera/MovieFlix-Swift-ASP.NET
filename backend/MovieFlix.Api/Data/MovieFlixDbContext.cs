@@ -33,6 +33,8 @@ namespace MovieFlix.Api.Data
 
         public DbSet<CollectionMovie> CollectionMovies => Set<CollectionMovie>();
 
+        public DbSet<SearchHistoryEntry> SearchHistoryEntries => Set<SearchHistoryEntry>();
+
         public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -200,6 +202,29 @@ namespace MovieFlix.Api.Data
                     cm.MovieId
                 })
                 .IsUnique();
+
+            modelBuilder.Entity<SearchHistoryEntry>()
+                .HasOne(entry => entry.User)
+                .WithMany()
+                .HasForeignKey(entry => entry.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One row per distinct term per user (case-insensitive).
+            modelBuilder.Entity<SearchHistoryEntry>()
+                .HasIndex(entry => new
+                {
+                    entry.UserId,
+                    entry.NormalizedQuery
+                })
+                .IsUnique();
+
+            // Recent-searches lookups by user + time.
+            modelBuilder.Entity<SearchHistoryEntry>()
+                .HasIndex(entry => new
+                {
+                    entry.UserId,
+                    entry.SearchedAt
+                });
 
             modelBuilder.Entity<RefreshToken>()
                 .HasOne(token => token.User)
