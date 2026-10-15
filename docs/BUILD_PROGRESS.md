@@ -56,12 +56,12 @@
 - [x] 2f. Search History — `/api/v1/me/search-history`
 - [x] 2g. User Preferences — `/api/v1/me/preferences`
 
-## Phase 3 — TMDB resilience & caching ⬜
+## Phase 3 — TMDB resilience & caching ✅
 
-- [ ] 3a. Polly (retry + timeout + circuit breaker)
-- [ ] 3b. Response caching (memory/distributed)
-- [ ] 3c. Extract shared `IMovieCacheService` from favorite upsert pattern
-- [ ] 3d. *(optional)* Background cache warm-up
+- [x] 3a. Polly (retry + timeout + circuit breaker) via `Microsoft.Extensions.Http.Resilience` (`AddStandardResilienceHandler`)
+- [x] 3b. Output caching (memory-backed; `tmdb-search` + `tmdb-details` policies)
+- [x] 3c. Extract shared `IMovieCacheService` (removed duplicate upsert from Favorite/Watchlist)
+- [x] 3d. Background cache warm-up (`MovieCacheWarmupService`, opt-in via `Tmdb:Warmup:Enabled`)
 
 ## Phase 4 — Professional API polish ⬜
 
@@ -112,3 +112,22 @@
 - Migrations: `AddWatchlist`, `AddMovieRatings`, `AddWatchHistory`, `AddReviews`,
   `AddCollections`, `AddSearchHistory`, `AddUserPreferences`.
 - Tests: **47 passing** (was 17 at end of Phase 1).
+
+### 2026-10-16 — Phase 3 complete (TMDB resilience & caching)
+- **3a Resilience**: added `Microsoft.Extensions.Http.Resilience` (pinned 9.10.0) and
+  `AddStandardResilienceHandler` on the TMDB `HttpClient` — retry (3, exponential +
+  jitter), attempt timeout (5s), total timeout (20s), circuit breaker
+  (50% / 5 min-throughput / 30s sampling / 15s break). `TmdbService` translates
+  Polly `TimeoutRejectedException` + `BrokenCircuitException` into
+  `TmdbServiceException` (→ 502).
+- **3b Output caching**: `AddOutputCache` + `UseOutputCache`; policies
+  `tmdb-search` (5 min, vary by query/page) and `tmdb-details` (1 h, vary by
+  route `tmdbId`) applied to the two TMDB-backed GETs in `MoviesController`.
+- **3c Shared cache**: new `IMovieCacheService`/`MovieCacheService` (check → TMDB
+  fetch outside the transaction → re-check inside → insert). `FavoriteService` and
+  `WatchlistService` now delegate to it; removed the duplicated TMDB-upsert code
+  and their direct `ITmdbService` dependency.
+- **3d Warm-up**: `MovieCacheWarmupService : BackgroundService` pre-caches
+  configured TMDB ids; **off by default** (`Tmdb:Warmup:Enabled=false`) so local
+  runs and tests make no surprise network calls.
+- Tests: **50 passing** (added `MovieCacheServiceTests` with a fake `ITmdbService`).
