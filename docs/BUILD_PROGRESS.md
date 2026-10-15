@@ -74,13 +74,15 @@
 - [x] Renames: `MovieQueyRequest` → `MovieQueryRequest`, `AuthController.login` → `Login`
 - [x] Hermetic tests: `appsettings.Testing.json` + `Testing` env (no dependency on dev user-secrets)
 
-## Phase 5 — Production ops ⬜
+## Phase 5 — Production ops ✅
 
-- [ ] Dockerfile + docker-compose
-- [ ] Postgres provider option
-- [ ] GitHub Actions CI (build + test)
-- [ ] Secrets-in-prod docs (env vars / Key Vault)
-- [ ] Backup / observability notes
+- [x] Dockerfile (multi-stage, non-root, curl for health probe) + `.dockerignore`
+- [x] docker-compose (API + optional Postgres behind a profile, `/health` probe)
+- [x] Postgres provider option (`Npgsql.EntityFrameworkCore.PostgreSQL`, `Database:Provider`)
+- [x] GitHub Actions CI (restore/build/test on push + PR)
+- [x] Secrets-in-prod docs — `docs/OPERATIONS.md` (env vars, Key Vault)
+- [x] Backup / observability notes — `docs/OPERATIONS.md`
+- [ ] ⚠️ Docker + Postgres paths authored but **not executed** (no Docker on the dev machine) — validate before relying on them
 
 ---
 
@@ -165,3 +167,27 @@
   the `auth` limiter returning 429 (limit overridden via `UseSetting`).
 - Tests: **54 passing**; run time dropped from ~17s to ~4s because EF console logging and
   Serilog are silenced in `Testing`.
+
+### 2026-10-16 — Phase 5 complete (production ops)
+- **Postgres provider option**: added `Npgsql.EntityFrameworkCore.PostgreSQL` 9.0.4 and
+  made the provider configurable via `Database:Provider` (`Sqlite` default, `Postgres`
+  opt-in) reading `ConnectionStrings:DefaultConnection` / `ConnectionStrings:Postgres`.
+  A missing Postgres connection string now fails fast with a clear error. Tests keep
+  using SQLite through the factory override.
+  - ⚠️ **Not verified against a live Postgres** (no Docker/DB on this machine). Also,
+    the committed migrations are SQLite-generated — a provider-specific migration set
+    must be generated before a real Postgres deployment (documented in OPERATIONS.md §4).
+- **Docker**: `backend/Dockerfile` (multi-stage SDK→aspnet, `dotnet publish`, curl for
+  the health probe, runs as non-root `$APP_UID`, listens on 8080, `Production` env) +
+  `backend/.dockerignore` (excludes `bin/`, `obj/`, `*.db`).
+- **Compose**: root `docker-compose.yml` — `api` service (SQLite persisted in a named
+  volume at `/data`, `/health` probe, secrets from `.env` with fail-fast `${VAR:?}`)
+  plus an optional `db` (Postgres 17) behind the `postgres` profile. `.env.example`
+  template; `.env` git-ignored (root `.gitignore` added).
+- **CI**: `.github/workflows/ci.yml` — restore/build/test on push+PR to `dev`/`main`,
+  NuGet cache, read-only permissions. Dormant until pushed (per project rule: no pushes).
+- **Docs**: new `docs/OPERATIONS.md` (environments, config/secret table, double-underscore
+  env convention, Key Vault, Docker, SQLite vs Postgres + migrations, health/logging/rate
+  limiting, backups, hardening).
+- Tests: **54 passing**, build clean with the extra provider package.
+- ⚠️ **Still outstanding:** rotate the leaked TMDB token on themoviedb.org.

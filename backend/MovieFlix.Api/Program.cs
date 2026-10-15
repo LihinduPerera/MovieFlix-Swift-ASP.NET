@@ -141,9 +141,28 @@ builder.Services.AddRateLimiter(options =>
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<MovieFlixDbContext>("database");
 
+// The database provider is selectable via configuration so the same codebase
+// can run on SQLite (default; used locally and in tests) or PostgreSQL in a
+// deployed environment. Set Database:Provider to "Postgres" and provide the
+// ConnectionStrings:Postgres connection string to switch.
+var databaseProvider = builder.Configuration["Database:Provider"] ?? "Sqlite";
+
 builder.Services.AddDbContext<MovieFlixDbContext>(options =>
 {
-    options.UseSqlite("Data Source=MovieFlix.db");
+    if (string.Equals(databaseProvider, "Postgres", StringComparison.OrdinalIgnoreCase))
+    {
+        var postgresConnection = builder.Configuration.GetConnectionString("Postgres")
+            ?? throw new InvalidOperationException(
+                "Connection string 'Postgres' is required when Database:Provider is 'Postgres'.");
+
+        options.UseNpgsql(postgresConnection);
+    }
+    else
+    {
+        options.UseSqlite(
+            builder.Configuration.GetConnectionString("DefaultConnection")
+            ?? "Data Source=MovieFlix.db");
+    }
 
     // For development
     if (builder.Environment.IsDevelopment())
