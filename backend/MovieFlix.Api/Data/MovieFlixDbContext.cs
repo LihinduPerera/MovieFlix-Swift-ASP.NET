@@ -29,6 +29,10 @@ namespace MovieFlix.Api.Data
 
         public DbSet<Review> Reviews => Set<Review>();
 
+        public DbSet<Collection> Collections => Set<Collection>();
+
+        public DbSet<CollectionMovie> CollectionMovies => Set<CollectionMovie>();
+
         public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -166,6 +170,36 @@ namespace MovieFlix.Api.Data
                     review.MovieId,
                     review.CreatedAt
                 });
+
+            modelBuilder.Entity<Collection>()
+                .HasOne(collection => collection.User)
+                .WithMany()
+                .HasForeignKey(collection => collection.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Collection>()
+                .HasIndex(collection => collection.UserId);
+
+            modelBuilder.Entity<CollectionMovie>()
+                .HasOne(cm => cm.Collection)
+                .WithMany(collection => collection.Movies)
+                .HasForeignKey(cm => cm.CollectionId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<CollectionMovie>()
+                .HasOne(cm => cm.Movie)
+                .WithMany()
+                .HasForeignKey(cm => cm.MovieId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // A movie can appear at most once per collection.
+            modelBuilder.Entity<CollectionMovie>()
+                .HasIndex(cm => new
+                {
+                    cm.CollectionId,
+                    cm.MovieId
+                })
+                .IsUnique();
 
             modelBuilder.Entity<RefreshToken>()
                 .HasOne(token => token.User)
