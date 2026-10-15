@@ -27,6 +27,8 @@ namespace MovieFlix.Api.Data
 
         public DbSet<WatchHistoryEntry> WatchHistoryEntries => Set<WatchHistoryEntry>();
 
+        public DbSet<Review> Reviews => Set<Review>();
+
         public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -134,6 +136,35 @@ namespace MovieFlix.Api.Data
                 {
                     entry.UserId,
                     entry.WatchedAt
+                });
+
+            modelBuilder.Entity<Review>()
+                .HasOne(review => review.User)
+                .WithMany()
+                .HasForeignKey(review => review.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<Review>()
+                .HasOne(review => review.Movie)
+                .WithMany()
+                .HasForeignKey(review => review.MovieId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One review per user per movie.
+            modelBuilder.Entity<Review>()
+                .HasIndex(review => new
+                {
+                    review.UserId,
+                    review.MovieId
+                })
+                .IsUnique();
+
+            // Listing a movie's reviews is ordered by time.
+            modelBuilder.Entity<Review>()
+                .HasIndex(review => new
+                {
+                    review.MovieId,
+                    review.CreatedAt
                 });
 
             modelBuilder.Entity<RefreshToken>()
