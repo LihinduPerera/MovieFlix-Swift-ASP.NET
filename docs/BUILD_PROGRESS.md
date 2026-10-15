@@ -46,13 +46,15 @@
 - [x] 1h. Update tests to use UserManager + ApplicationUser
 - [x] Refresh tokens (model + `/auth/refresh` + `/auth/logout` + rotation + revocation)
 
-- [ ] 2a. Watchlist
-- [ ] 2b. Movie Ratings (+ community average)
-- [ ] 2c. Watch History (continue watching / recently watched)
-- [ ] 2d. Reviews (CRUD + ownership + pagination)
-- [ ] 2e. Collections (many-to-many)
-- [ ] 2f. Search History
-- [ ] 2g. User Preferences
+## Phase 2 — Core user features ✅
+
+- [x] 2a. Watchlist — `/api/v1/me/watchlist` (add, list, remove; TMDB-id add)
+- [x] 2b. Movie Ratings (+ community average) — `/api/v1/me/ratings`, `/api/v1/movies/{id}/ratings`
+- [x] 2c. Watch History (continue watching / recently watched) — `/api/v1/me/history`
+- [x] 2d. Reviews (CRUD + ownership + pagination) — `/api/v1/movies/{id}/reviews`, `/api/v1/reviews/{id}`
+- [x] 2e. Collections (many-to-many) — `/api/v1/me/collections`
+- [x] 2f. Search History — `/api/v1/me/search-history`
+- [x] 2g. User Preferences — `/api/v1/me/preferences`
 
 ## Phase 3 — TMDB resilience & caching ⬜
 
@@ -88,3 +90,25 @@
 - Locked decisions (see table above).
 - Kicked off Phase 0 (secret hygiene) → Phase 1 (Identity).
 - Created this progress doc.
+
+### 2026-10-16 — Phase 2 complete
+- **2a Watchlist**: `WatchlistItem` (unique UserId+MovieId), `WatchlistService`
+  (+ TMDB-id add reusing the cache-upsert pattern), `WatchlistController`.
+- **2b Ratings**: `MovieRating` (1–5, unique per user+movie), upsert + community
+  average via DB aggregate, `RatingsController` (public community endpoint).
+- **2c Watch History**: `WatchHistoryEntry` (progress + completed), Continue
+  Watching + Recently Watched (paged), clear/remove, `HistoryController`.
+- **2d Reviews**: `Review` (1 per user+movie), CRUD with ownership
+  (`ForbiddenAccessException` → 403), paginated public listing,
+  `ReviewAlreadyExistsException` → 409, `ReviewsController`.
+- **2e Collections**: `Collection` + `CollectionMovie` (many-to-many), ownership
+  checks, add/remove movies, `DuplicateResourceException` → 409,
+  `CollectionsController`.
+- **2f Search History**: `SearchHistoryEntry` (case-insensitive dedupe via
+  `NormalizedQuery`), recent/remove/clear, `SearchHistoryController`.
+- **2g User Preferences**: `UserPreferences` (1:1), get-or-create defaults,
+  validated update (language/region/theme), `PreferencesController`.
+- New shared exceptions + `GlobalExceptionHandler` branches (403/409).
+- Migrations: `AddWatchlist`, `AddMovieRatings`, `AddWatchHistory`, `AddReviews`,
+  `AddCollections`, `AddSearchHistory`, `AddUserPreferences`.
+- Tests: **47 passing** (was 17 at end of Phase 1).
