@@ -2,7 +2,7 @@
 {
     public class FavoriteAlreadyExistsException : Exception
     {
-        public FavoriteAlreadyExistsException(int userId, int movieId)
+        public FavoriteAlreadyExistsException(string userId, int movieId)
             : base($"User {userId} has already favorited movie {movieId}.")
         {
 

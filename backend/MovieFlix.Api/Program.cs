@@ -11,7 +11,6 @@ using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
 
-
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddSwaggerGen(options =>
@@ -39,14 +38,13 @@ builder.Services.AddSwaggerGen(options =>
     });
 });
 
-
 builder.Services.AddControllers();
 
 builder.Services.AddDbContext<MovieFlixDbContext>(options =>
 {
     options.UseSqlite("Data Source=MovieFlix.db");
 
-    //For development
+    // For development
     if (builder.Environment.IsDevelopment())
     {
         options
@@ -66,9 +64,9 @@ builder.Services.AddHttpClient<ITmdbService, TmdbService>(
 
 builder.Services.AddScoped<IMovieService, MovieService>();
 builder.Services.AddScoped<IFavoriteService, FavoriteService>();
-builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
+builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
 builder.Services.Configure<TmdbSettings>(
@@ -77,11 +75,27 @@ builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("Jwt"));
 
 builder.Services
+    .AddIdentityCore<ApplicationUser>(options =>
+    {
+        options.Password.RequireDigit = true;
+        options.Password.RequiredLength = 8;
+        options.Password.RequireNonAlphanumeric = true;
+        options.Password.RequireUppercase = true;
+        options.Password.RequireLowercase = true;
+        options.User.RequireUniqueEmail = true;
+        options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
+        options.Lockout.MaxFailedAccessAttempts = 5;
+        options.Lockout.AllowedForNewUsers = false;
+    })
+    .AddRoles<IdentityRole>()
+    .AddEntityFrameworkStores<MovieFlixDbContext>()
+    .AddDefaultTokenProviders();
+
+builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        var jwtSettings = builder.Configuration
-        .GetSection("Jwt");
+        var jwtSettings = builder.Configuration.GetSection("Jwt");
 
         options.TokenValidationParameters = new TokenValidationParameters
         {
@@ -89,6 +103,7 @@ builder.Services
             ValidateAudience = true,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
+            ClockSkew = TimeSpan.FromSeconds(30),
 
             ValidIssuer = jwtSettings["Issuer"],
             ValidAudience = jwtSettings["Audience"],
@@ -121,6 +136,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+
+await DatabaseSeeder.InitializeAsync(app.Services);
 
 app.Run();
 

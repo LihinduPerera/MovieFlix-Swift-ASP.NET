@@ -18,7 +18,7 @@ namespace MovieFlix.Api.Services
             _tmdbService = tmdbService;
         }
 
-        public async Task<List<FavoriteMovieResponse>> GetUserFavoritesAsync(int userId)
+        public async Task<List<FavoriteMovieResponse>> GetUserFavoritesAsync(string userId)
         {
             var favorites = await _context.Favorites
                 .AsNoTracking()
@@ -39,7 +39,7 @@ namespace MovieFlix.Api.Services
             return favorites;
         }
 
-        public async Task<FavoriteMovieResponse?> AddFavoriteAsync(int userId, int movieId)
+        public async Task<FavoriteMovieResponse?> AddFavoriteAsync(string userId, int movieId)
         {
             var userExists = await _context.Users
                 .AsNoTracking()
@@ -95,7 +95,7 @@ namespace MovieFlix.Api.Services
                 .FirstAsync();
         }
 
-        public async Task<bool> RemoveFavoriteAsync(int userId,int movieId)
+        public async Task<bool> RemoveFavoriteAsync(string userId,int movieId)
         {
             var favorite = await _context.Favorites
                 .FirstOrDefaultAsync(favorite =>
@@ -116,7 +116,7 @@ namespace MovieFlix.Api.Services
 
 
         public async Task<FavoriteMovieResponse> AddFavoriteByTmdbIdAsync(
-            int userId,
+            string userId,
             int tmdbId,
             CancellationToken cancellationToken = default)
         {
