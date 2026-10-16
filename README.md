@@ -106,17 +106,31 @@ cd MovieFlix-Swift-ASP.NET
 
 ### 2. Configure the backend
 
-Configure the TMDB and JWT settings required by the API using **User
-Secrets**, environment variables, or another local configuration
-mechanism supported by ASP.NET Core.
+Secrets are **not** stored in `appsettings.json` (that file only holds
+non-secret defaults). Provide the two required secrets using **User
+Secrets** (recommended for local development), environment variables, or
+another ASP.NET Core configuration provider.
 
--   Add your own TMDB API key.
--   Set a strong, unique JWT signing key suitable for local development.
+Using User Secrets (already wired up via the `UserSecretsId` in
+`MovieFlix.Api.csproj`):
+
+``` bash
+cd backend/MovieFlix.Api
+
+# TMDB API read access token (from https://www.themoviedb.org/settings/api)
+dotnet user-secrets set "Tmdb:AccessToken" "<your-tmdb-token>"
+
+# A strong, unique JWT signing key (>= 32 bytes) for local development
+dotnet user-secrets set "Jwt:Key" "<your-strong-jwt-key>"
+```
+
 -   Do not commit real API keys, signing keys, passwords, or other
-    secrets to Git.
+    secrets to Git. User Secrets are stored outside the repository.
 
-Use the configuration classes and settings expected by the current
-backend code when naming these values.
+> **Note:** `Jwt:Key`, `Tmdb:AccessToken`, and other secrets were removed
+> from source control. If you are pulling this repo for the first time,
+> the API will not authenticate or call TMDB until you set the secrets
+> above.
 
 ### 3. Start the API
 
