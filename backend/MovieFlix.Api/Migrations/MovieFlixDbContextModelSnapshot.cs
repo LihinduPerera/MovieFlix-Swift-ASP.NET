@@ -272,6 +272,38 @@ namespace MovieFlix.Api.Migrations
                     b.ToTable("Movies");
                 });
 
+            modelBuilder.Entity("MovieFlix.Api.Models.MovieRating", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MovieId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Rating")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MovieId");
+
+                    b.HasIndex("UserId", "MovieId")
+                        .IsUnique();
+
+                    b.ToTable("MovieRatings");
+                });
+
             modelBuilder.Entity("MovieFlix.Api.Models.RefreshToken", b =>
                 {
                     b.Property<int>("Id")
@@ -386,6 +418,25 @@ namespace MovieFlix.Api.Migrations
                 });
 
             modelBuilder.Entity("MovieFlix.Api.Models.Favorite", b =>
+                {
+                    b.HasOne("MovieFlix.Api.Models.Movie", "Movie")
+                        .WithMany()
+                        .HasForeignKey("MovieId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MovieFlix.Api.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Movie");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.MovieRating", b =>
                 {
                     b.HasOne("MovieFlix.Api.Models.Movie", "Movie")
                         .WithMany()

@@ -23,6 +23,8 @@ namespace MovieFlix.Api.Data
 
         public DbSet<WatchlistItem> WatchlistItems => Set<WatchlistItem>();
 
+        public DbSet<MovieRating> MovieRatings => Set<MovieRating>();
+
         public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
@@ -77,6 +79,31 @@ namespace MovieFlix.Api.Data
                     item.MovieId
                 })
                 .IsUnique();
+
+            modelBuilder.Entity<MovieRating>()
+                .HasOne(rating => rating.User)
+                .WithMany()
+                .HasForeignKey(rating => rating.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            modelBuilder.Entity<MovieRating>()
+                .HasOne(rating => rating.Movie)
+                .WithMany()
+                .HasForeignKey(rating => rating.MovieId)
+                .OnDelete(DeleteBehavior.Cascade);
+
+            // One rating per user per movie.
+            modelBuilder.Entity<MovieRating>()
+                .HasIndex(rating => new
+                {
+                    rating.UserId,
+                    rating.MovieId
+                })
+                .IsUnique();
+
+            // Fast community-average lookups per movie.
+            modelBuilder.Entity<MovieRating>()
+                .HasIndex(rating => rating.MovieId);
 
             modelBuilder.Entity<RefreshToken>()
                 .HasOne(token => token.User)
