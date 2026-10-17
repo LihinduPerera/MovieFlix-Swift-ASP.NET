@@ -26,15 +26,13 @@
 
 ---
 
-## Phase 0 — Secret hygiene ⬜
+## Phase 0 — Secret hygiene ✅
 
-- [ ] Add `UserSecretsId` to `MovieFlix.Api.csproj`
-- [ ] Move `Jwt:Key` + `Tmdb:AccessToken` out of `appsettings.json` → User Secrets
-- [ ] Add placeholders / env-var fallback in `appsettings.json`
-- [ ] **User action:** rotate the leaked TMDB token on themoviedb.org
-- [ ] Update README run instructions
-
-## Phase 1 — Identity migration ⬜
+- [x] Add `UserSecretsId` to `MovieFlix.Api.csproj`
+- [x] Move `Jwt:Key` + `Tmdb:AccessToken` out of `appsettings.json` → User Secrets
+- [x] Update README run instructions
+- [x] Secrets never committed (verified git history)
+- [x] `appsettings.json` no longer git-ignored
 
 ## Phase 1 — Identity migration ✅
 
@@ -47,9 +45,6 @@
 - [x] 1g. Reset DB + regenerate migrations (Identity + Movies + Favorites + RefreshTokens)
 - [x] 1h. Update tests to use UserManager + ApplicationUser
 - [x] Refresh tokens (model + `/auth/refresh` + `/auth/logout` + rotation + revocation)
-
-- [ ] 2a. Watchlist
-- [ ] 2b. Movie Ratings (+ community average)
 
 - [ ] 2a. Watchlist
 - [ ] 2b. Movie Ratings (+ community average)
