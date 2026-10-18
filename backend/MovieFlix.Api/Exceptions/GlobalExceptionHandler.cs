@@ -93,6 +93,15 @@ namespace MovieFlix.Api.Exceptions
                     Detail = forbiddenException.Message
                 };
             }
+            else if (exception is DuplicateResourceException duplicateException)
+            {
+                problemDetails = new ProblemDetails
+                {
+                    Title = "Duplicate resource.",
+                    Status = StatusCodes.Status409Conflict,
+                    Detail = duplicateException.Message
+                };
+            }
             else if (exception is InvalidOperationException)
             {
                 problemDetails = new ProblemDetails
