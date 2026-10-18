@@ -1,8 +1,5 @@
-﻿using System.Security.Cryptography;
-using Microsoft.AspNetCore.Diagnostics;
-using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
-using MovieFlix.Api.Exceptions;
 
 namespace MovieFlix.Api.Exceptions
 {
@@ -76,6 +73,24 @@ namespace MovieFlix.Api.Exceptions
                     Title = "TMDb service error.",
                     Status = StatusCodes.Status502BadGateway,
                     Detail = tmdbException.Message
+                };
+            }
+            else if (exception is ReviewAlreadyExistsException reviewException)
+            {
+                problemDetails = new ProblemDetails
+                {
+                    Title = "Review already exists.",
+                    Status = StatusCodes.Status409Conflict,
+                    Detail = reviewException.Message
+                };
+            }
+            else if (exception is ForbiddenAccessException forbiddenException)
+            {
+                problemDetails = new ProblemDetails
+                {
+                    Title = "Forbidden.",
+                    Status = StatusCodes.Status403Forbidden,
+                    Detail = forbiddenException.Message
                 };
             }
             else if (exception is InvalidOperationException)
