@@ -17,9 +17,20 @@ engineering decisions behind it and build a foundation that can grow.
 -   **Movie data from TMDB** --- search for movies and retrieve movie
     details through the backend.
 -   **REST API** --- versioned endpoints under `/api/v1`.
--   **User accounts and authentication** --- password hashing and
-    JWT-based login.
+-   **User accounts and authentication** --- ASP.NET Core Identity with
+    password hashing, JWT-based login, refresh-token rotation, and
+    role-based authorization.
 -   **Favorites** --- add, list, and remove a user's favorite movies.
+-   **Watchlist** --- a separate "watch later" list per user.
+-   **Ratings** --- 1--5 star ratings with a community average per movie.
+-   **Watch history** --- playback progress, a Continue Watching rail, and
+    a paginated Recently Watched list.
+-   **Reviews** --- create, read, update, and delete movie reviews with
+    ownership rules and pagination.
+-   **Collections** --- user-defined collections that group movies
+    (many-to-many).
+-   **Search history** --- recent, de-duplicated search terms per user.
+-   **User preferences** --- language, region, theme, and toggles per user.
 -   **Database persistence** --- Entity Framework Core with SQLite.
 -   **Validation and error handling** --- consistent Problem Details
     responses for API errors, including invalid input and missing
@@ -29,7 +40,7 @@ engineering decisions behind it and build a foundation that can grow.
 -   **Automated tests** --- service tests and API integration tests
     using xUnit and an isolated SQLite in-memory database.
 
-The backend test suite currently contains **6 passing test cases**.
+The backend test suite currently contains **47 passing test cases**.
 
 ## 🧰 Tech stack
 
@@ -44,8 +55,9 @@ The backend test suite currently contains **6 passing test cases**.
 
   Data access                         Entity Framework Core
 
-  Authentication                      JWT bearer authentication, password
-                                      hashing
+  Authentication                      ASP.NET Core Identity, JWT bearer
+                                      authentication, refresh tokens,
+                                      role-based authorization
 
   External movie data                 [The Movie Database
                                       (TMDB)](https://www.themoviedb.org/)
@@ -82,7 +94,9 @@ ASP.NET Core REST API
     v                  v
 SQLite database       TMDB API
 (users, movies,       (external movie data)
- favorites)
+ favorites, watchlist,
+ ratings, reviews,
+ collections, ...)
 ```
 
 The backend acts as the boundary between the iOS app, persisted user
@@ -169,6 +183,10 @@ include:
   -----------------------------------------------------------------------------------------------------
   Purpose                 Endpoint                                              Access
   ----------------------- ----------------------------------------------------- -----------------------
+  Register / log in       `POST /api/v1/Auth/register`, `POST /api/v1/Auth/login`  Public
+
+  Refresh / log out       `POST /api/v1/Auth/refresh`, `POST /api/v1/Auth/logout`  Public / token
+
   Search movies through   `GET /api/v1/Movies/search?query=...`                 Public
   TMDB                                                                          
 
@@ -183,17 +201,25 @@ include:
   Manage local movie      `POST`, `PUT`, `DELETE /api/v1/Movies` routes         Restricted by
   records                                                                       authorization
 
-  Get a user's favorites  `GET /api/v1/Users/{userId}/favorites`                Depends on the
-                                                                                configured
-                                                                                authorization policy
+  Manage favorites        `GET`, `POST`, `DELETE /api/v1/me/favorites`          Authenticated
 
-  Add a favorite          `POST /api/v1/Users/{userId}/favorites/{movieId}`     Depends on the
-                                                                                configured
-                                                                                authorization policy
+  Manage watchlist        `GET`, `POST`, `DELETE /api/v1/me/watchlist`          Authenticated
 
-  Remove a favorite       `DELETE /api/v1/Users/{userId}/favorites/{movieId}`   Depends on the
-                                                                                configured
-                                                                                authorization policy
+  Rate movies             `GET`, `PUT`, `DELETE /api/v1/me/ratings/{movieId}`   Authenticated
+
+  Community rating        `GET /api/v1/movies/{movieId}/ratings`                Public
+
+  Watch history           `GET /api/v1/me/history`, `/continue`                 Authenticated
+
+  Movie reviews           `GET`, `POST /api/v1/movies/{movieId}/reviews`        Public / Authenticated
+
+  Edit / delete a review  `PUT`, `DELETE /api/v1/reviews/{reviewId}`            Authenticated (owner)
+
+  Manage collections      `GET`, `POST`, `PUT`, `DELETE /api/v1/me/collections` Authenticated
+
+  Search history          `GET`, `POST`, `DELETE /api/v1/me/search-history`     Authenticated
+
+  User preferences        `GET`, `PUT /api/v1/me/preferences`                   Authenticated
   -----------------------------------------------------------------------------------------------------
 
 Check the current controllers and Swagger documentation for exact
