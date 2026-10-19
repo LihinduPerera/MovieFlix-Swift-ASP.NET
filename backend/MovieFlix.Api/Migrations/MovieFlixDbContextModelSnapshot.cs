@@ -460,6 +460,51 @@ namespace MovieFlix.Api.Migrations
                     b.ToTable("SearchHistoryEntries");
                 });
 
+            modelBuilder.Entity("MovieFlix.Api.Models.UserPreferences", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("AutoPlayTrailers")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("EmailNotifications")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("MatureContentFilter")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PreferredLanguage")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PreferredRegion")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Theme")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique();
+
+                    b.ToTable("UserPreferences");
+                });
+
             modelBuilder.Entity("MovieFlix.Api.Models.WatchHistoryEntry", b =>
                 {
                     b.Property<int>("Id")
@@ -674,6 +719,17 @@ namespace MovieFlix.Api.Migrations
                     b.HasOne("MovieFlix.Api.Models.ApplicationUser", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.UserPreferences", b =>
+                {
+                    b.HasOne("MovieFlix.Api.Models.ApplicationUser", "User")
+                        .WithOne()
+                        .HasForeignKey("MovieFlix.Api.Models.UserPreferences", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
