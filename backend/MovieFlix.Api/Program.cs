@@ -7,6 +7,7 @@ using MovieFlix.Api.Data;
 using MovieFlix.Api.Exceptions;
 using MovieFlix.Api.Models;
 using MovieFlix.Api.Services;
+using Polly;
 using System.Text;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -56,13 +57,48 @@ builder.Services.AddDbContext<MovieFlixDbContext>(options =>
 
 builder.Services.AddHttpContextAccessor();
 
-builder.Services.AddHttpClient<ITmdbService, TmdbService>(
-    client =>
+builder.Services
+    .AddHttpClient<ITmdbService, TmdbService>(client =>
     {
-        client.Timeout = TimeSpan.FromSeconds(10);
+        // Timeouts are enforced by the resilience pipeline below (attempt +
+        // total), so the HttpClient-level timeout is disabled to avoid it
+        // preempting the pipeline.
+        client.Timeout = Timeout.InfiniteTimeSpan;
+    })
+    .AddStandardResilienceHandler(options =>
+    {
+        // Retry transient failures with exponential backoff + jitter.
+        options.Retry.MaxRetryAttempts = 3;
+        options.Retry.Delay = TimeSpan.FromMilliseconds(200);
+        options.Retry.BackoffType = DelayBackoffType.Exponential;
+        options.Retry.UseJitter = true;
+
+        // Per-attempt and whole-request timeouts.
+        options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(5);
+        options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(20);
+
+        // Circuit breaker: stop hammering TMDB while it is unhealthy.
+        options.CircuitBreaker.FailureRatio = 0.5;
+        options.CircuitBreaker.MinimumThroughput = 5;
+        options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
+        options.CircuitBreaker.BreakDuration = TimeSpan.FromSeconds(15);
     });
 
+builder.Services.AddOutputCache(options =>
+{
+    // Cache expensive TMDB-backed GET responses. A distributed cache can be
+    // swapped in later (e.g. Redis) without changing these policies.
+    options.AddPolicy("tmdb-search", policy => policy
+        .Expire(TimeSpan.FromMinutes(5))
+        .SetVaryByQuery("query", "page"));
+
+    options.AddPolicy("tmdb-details", policy => policy
+        .Expire(TimeSpan.FromHours(1))
+        .SetVaryByRouteValue("tmdbId"));
+});
+
 builder.Services.AddScoped<IMovieService, MovieService>();
+builder.Services.AddScoped<IMovieCacheService, MovieCacheService>();
 builder.Services.AddScoped<IFavoriteService, FavoriteService>();
 builder.Services.AddScoped<IWatchlistService, WatchlistService>();
 builder.Services.AddScoped<IRatingService, RatingService>();
@@ -78,8 +114,12 @@ builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 
 builder.Services.Configure<TmdbSettings>(
     builder.Configuration.GetSection("Tmdb"));
+builder.Services.Configure<TmdbWarmupSettings>(
+    builder.Configuration.GetSection("Tmdb:Warmup"));
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("Jwt"));
+
+builder.Services.AddHostedService<MovieCacheWarmupService>();
 
 builder.Services
     .AddIdentityCore<ApplicationUser>(options =>
@@ -141,6 +181,8 @@ app.UseHttpsRedirection();
 app.UseAuthentication();
 
 app.UseAuthorization();
+
+app.UseOutputCache();
 
 app.MapControllers();
 

@@ -9,12 +9,14 @@ namespace MovieFlix.Api.Services
     public class WatchlistService : IWatchlistService
     {
         private readonly MovieFlixDbContext _context;
-        private readonly ITmdbService _tmdbService;
+        private readonly IMovieCacheService _movieCacheService;
 
-        public WatchlistService(MovieFlixDbContext context, ITmdbService tmdbService)
+        public WatchlistService(
+            MovieFlixDbContext context,
+            IMovieCacheService movieCacheService)
         {
             _context = context;
-            _tmdbService = tmdbService;
+            _movieCacheService = movieCacheService;
         }
 
         public async Task<List<FavoriteMovieResponse>> GetUserWatchlistAsync(string userId)
@@ -112,40 +114,12 @@ namespace MovieFlix.Api.Services
             int tmdbId,
             CancellationToken cancellationToken = default)
         {
-            var movie = await _context.Movies
-                .SingleOrDefaultAsync(
-                    movie => movie.TmdbId == tmdbId,
-                    cancellationToken);
-
-            DTOs.Tmdb.TmdbMovieDetailsResponse? tmdbMovie = null;
-            if (movie is null)
-            {
-                tmdbMovie = await _tmdbService.GetMovieDetailsAsync(
-                    tmdbId,
-                    cancellationToken);
-            }
-
-            await using var transaction =
-                await _context.Database.BeginTransactionAsync(
-                    cancellationToken);
-
-            movie = await _context.Movies
-                .SingleOrDefaultAsync(
-                    movie => movie.TmdbId == tmdbId,
-                    cancellationToken);
-
-            if (movie is null)
-            {
-                movie = new Movie
-                {
-                    TmdbId = tmdbMovie!.Id,
-                    Title = tmdbMovie.Title,
-                    Overview = tmdbMovie.Overview
-                };
-
-                _context.Movies.Add(movie);
-                await _context.SaveChangesAsync(cancellationToken);
-            }
+            // Resolve (and cache) the movie via the shared cache service, then
+            // create the watchlist item. The movie upsert is idempotent, so the
+            // two steps do not need a single shared transaction.
+            var movie = await _movieCacheService.GetOrCreateByTmdbIdAsync(
+                tmdbId,
+                cancellationToken);
 
             var result = await AddAsync(userId, movie.Id);
             if (result is null)
@@ -154,7 +128,6 @@ namespace MovieFlix.Api.Services
                     "The user or movie could not be found.");
             }
 
-            await transaction.CommitAsync(cancellationToken);
             return result;
         }
     }
