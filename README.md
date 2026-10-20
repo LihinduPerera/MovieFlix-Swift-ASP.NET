@@ -32,6 +32,8 @@ engineering decisions behind it and build a foundation that can grow.
 -   **Search history** --- recent, de-duplicated search terms per user.
 -   **User preferences** --- language, region, theme, and toggles per user.
 -   **Database persistence** --- Entity Framework Core with SQLite.
+-   **TMDB resilience and caching** --- automatic retries, timeouts, a circuit
+    breaker, and output caching for TMDB-backed responses.
 -   **Validation and error handling** --- consistent Problem Details
     responses for API errors, including invalid input and missing
     records.
@@ -40,7 +42,7 @@ engineering decisions behind it and build a foundation that can grow.
 -   **Automated tests** --- service tests and API integration tests
     using xUnit and an isolated SQLite in-memory database.
 
-The backend test suite currently contains **47 passing test cases**.
+The backend test suite currently contains **50 passing test cases**.
 
 ## 🧰 Tech stack
 
@@ -61,6 +63,12 @@ The backend test suite currently contains **47 passing test cases**.
 
   External movie data                 [The Movie Database
                                       (TMDB)](https://www.themoviedb.org/)
+
+  Resilience                          Polly via
+                                      `Microsoft.Extensions.Http.Resilience`
+                                      (retry, timeout, circuit breaker)
+
+  Caching                             ASP.NET Core output caching
 
   API documentation                   Swagger / OpenAPI
 
