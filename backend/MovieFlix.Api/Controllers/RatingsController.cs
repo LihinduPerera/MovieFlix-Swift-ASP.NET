@@ -1,3 +1,4 @@
+using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MovieFlix.Api.DTOs.Ratings;
@@ -6,6 +7,7 @@ using MovieFlix.Api.Services;
 namespace MovieFlix.Api.Controllers
 {
     [ApiController]
+    [ApiVersion("1.0")]
     [Route("api/v1/[controller]")]
     public class RatingsController : ControllerBase
     {

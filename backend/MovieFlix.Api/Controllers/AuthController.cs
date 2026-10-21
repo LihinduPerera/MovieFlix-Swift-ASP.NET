@@ -1,11 +1,14 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using Asp.Versioning;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using MovieFlix.Api.DTOs.Auth;
 using MovieFlix.Api.Services;
 
 namespace MovieFlix.Api.Controllers
 {
     [ApiController]
+    [ApiVersion("1.0")]
     [Route("api/v1/[controller]")]
     public class AuthController : ControllerBase
     {
@@ -20,6 +23,7 @@ namespace MovieFlix.Api.Controllers
             _currentUser = currentUser;
         }
 
+        [EnableRateLimiting("auth")]
         [HttpPost("register")]
         public async Task<IActionResult> Register(RegisterRequest request)
         {
@@ -28,6 +32,7 @@ namespace MovieFlix.Api.Controllers
             return StatusCode(StatusCodes.Status201Created);
         }
 
+        [EnableRateLimiting("auth")]
         [HttpPost("login")]
         public async Task<IActionResult> Login(LoginRequest request)
         {
@@ -44,6 +49,7 @@ namespace MovieFlix.Api.Controllers
         /// <summary>
         /// Exchanges a valid refresh token for a new access + refresh token pair.
         /// </summary>
+        [EnableRateLimiting("auth")]
         [HttpPost("refresh")]
         public async Task<IActionResult> Refresh(RefreshRequest request)
         {

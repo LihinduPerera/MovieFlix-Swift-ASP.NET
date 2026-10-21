@@ -1,5 +1,7 @@
+using Asp.Versioning;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using MovieFlix.Api.Configuration;
@@ -8,9 +10,27 @@ using MovieFlix.Api.Exceptions;
 using MovieFlix.Api.Models;
 using MovieFlix.Api.Services;
 using Polly;
+using Serilog;
+using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// Structured logging via Serilog (configured from the "Serilog" config section).
+builder.Host.UseSerilog((context, services, configuration) =>
+{
+    configuration
+        .ReadFrom.Configuration(context.Configuration)
+        .ReadFrom.Services(services)
+        .Enrich.FromLogContext();
+
+    // Keep test output clean: only warnings and above while testing.
+    if (context.HostingEnvironment.IsEnvironment("Testing"))
+    {
+        configuration.MinimumLevel.Warning();
+    }
+});
 
 builder.Services.AddEndpointsApiExplorer();
 
@@ -40,6 +60,86 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 builder.Services.AddControllers();
+
+// API versioning: controllers declare [ApiVersion("1.0")] and the API reports
+// the supported versions via the api-supported-versions response header. The
+// URL contract (/api/v1/...) is kept stable. AddMvc() wires the versioning
+// integration into MVC.
+builder.Services
+    .AddApiVersioning(options =>
+    {
+        options.DefaultApiVersion = new ApiVersion(1, 0);
+        options.AssumeDefaultVersionWhenUnspecified = true;
+        options.ReportApiVersions = true;
+    })
+    .AddMvc();
+
+// CORS: allowed browser origins are configured (empty by default). Native
+// clients are unaffected; this is for a future web front-end.
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>() ?? [];
+
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("MovieFlixClient", policy =>
+    {
+        if (allowedOrigins.Length > 0)
+        {
+            policy
+                .WithOrigins(allowedOrigins)
+                .AllowAnyHeader()
+                .AllowAnyMethod();
+        }
+    });
+});
+
+// Rate limiting: a global per-client limit plus a stricter "auth" policy for
+// credential endpoints to slow down brute-force attempts. Limits are
+// configurable via the "RateLimiting" section.
+var rateLimiting = builder.Configuration
+    .GetSection("RateLimiting")
+    .Get<RateLimitingSettings>() ?? new RateLimitingSettings();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(
+        context =>
+        {
+            var key = context.User.Identity?.IsAuthenticated == true
+                ? context.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                    ?? "authenticated"
+                : context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+
+            return RateLimitPartition.GetFixedWindowLimiter(
+                $"global:{key}",
+                _ => new FixedWindowRateLimiterOptions
+                {
+                    PermitLimit = rateLimiting.GlobalPermitLimit,
+                    Window = TimeSpan.FromSeconds(rateLimiting.GlobalWindowSeconds),
+                    QueueLimit = 0
+                });
+        });
+
+    options.AddPolicy("auth", context =>
+    {
+        var key = context.Connection.RemoteIpAddress?.ToString() ?? "anonymous";
+
+        return RateLimitPartition.GetFixedWindowLimiter(
+            $"auth:{key}",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = rateLimiting.AuthPermitLimit,
+                Window = TimeSpan.FromSeconds(rateLimiting.AuthWindowSeconds),
+                QueueLimit = 0
+            });
+    });
+});
+
+builder.Services.AddHealthChecks()
+    .AddDbContextCheck<MovieFlixDbContext>("database");
 
 builder.Services.AddDbContext<MovieFlixDbContext>(options =>
 {
@@ -176,15 +276,23 @@ if (app.Environment.IsDevelopment())
 
 app.UseExceptionHandler();
 
+app.UseSerilogRequestLogging();
+
 app.UseHttpsRedirection();
+
+app.UseCors("MovieFlixClient");
 
 app.UseAuthentication();
 
 app.UseAuthorization();
 
+app.UseRateLimiter();
+
 app.UseOutputCache();
 
 app.MapControllers();
+
+app.MapHealthChecks("/health");
 
 await DatabaseSeeder.InitializeAsync(app.Services);
 
