@@ -16,7 +16,8 @@ engineering decisions behind it and build a foundation that can grow.
 
 -   **Movie data from TMDB** --- search for movies and retrieve movie
     details through the backend.
--   **REST API** --- versioned endpoints under `/api/v1`.
+-   **REST API** --- versioned endpoints under `/api/v1`; the API reports its
+    supported versions via the `api-supported-versions` response header.
 -   **User accounts and authentication** --- ASP.NET Core Identity with
     password hashing, JWT-based login, refresh-token rotation, and
     role-based authorization.
@@ -34,6 +35,13 @@ engineering decisions behind it and build a foundation that can grow.
 -   **Database persistence** --- Entity Framework Core with SQLite.
 -   **TMDB resilience and caching** --- automatic retries, timeouts, a circuit
     breaker, and output caching for TMDB-backed responses.
+-   **Rate limiting** --- a global per-client request budget plus a stricter
+    limit on the login, register, and refresh endpoints (configurable).
+-   **Health checks** --- a `/health` endpoint that verifies database
+    connectivity for probes and load balancers.
+-   **Structured logging** --- request/response logging via Serilog writing
+    structured events to the console.
+-   **CORS** --- configurable allowed origins for a future web front-end.
 -   **Validation and error handling** --- consistent Problem Details
     responses for API errors, including invalid input and missing
     records.
@@ -42,7 +50,7 @@ engineering decisions behind it and build a foundation that can grow.
 -   **Automated tests** --- service tests and API integration tests
     using xUnit and an isolated SQLite in-memory database.
 
-The backend test suite currently contains **50 passing test cases**.
+The backend test suite currently contains **54 passing test cases**.
 
 ## 🧰 Tech stack
 
@@ -74,6 +82,15 @@ The backend test suite currently contains **50 passing test cases**.
 
   Testing                             xUnit, ASP.NET Core integration
                                       testing
+
+  Logging                             Serilog (structured console logging)
+
+  API versioning                      Asp.Versioning (v1, reported on
+                                      responses)
+
+  Rate limiting                       ASP.NET Core rate limiting
+
+  Health checks                       ASP.NET Core health checks (`/health`)
   --------------------------------------------------------------------------
 
 ## 🗂️ Repository structure
@@ -228,6 +245,8 @@ include:
   Search history          `GET`, `POST`, `DELETE /api/v1/me/search-history`     Authenticated
 
   User preferences        `GET`, `PUT /api/v1/me/preferences`                   Authenticated
+
+  Health check            `GET /health`                                          Public
   -----------------------------------------------------------------------------------------------------
 
 Check the current controllers and Swagger documentation for exact

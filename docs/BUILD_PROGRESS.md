@@ -63,15 +63,16 @@
 - [x] 3c. Extract shared `IMovieCacheService` (removed duplicate upsert from Favorite/Watchlist)
 - [x] 3d. Background cache warm-up (`MovieCacheWarmupService`, opt-in via `Tmdb:Warmup:Enabled`)
 
-## Phase 4 — Professional API polish ⬜
+## Phase 4 — Professional API polish ✅
 
-- [ ] CORS
-- [ ] Rate limiting
-- [ ] Serilog structured logging
-- [ ] Health checks (`/health`)
-- [ ] API versioning formalized
-- [ ] Validation polish (FluentValidation optional)
-- [ ] Renames: `MovieQueyRequest` → `MovieQueryRequest`, `AuthController.login` → `Login`
+- [x] CORS (configurable `Cors:AllowedOrigins`, `MovieFlixClient` policy)
+- [x] Rate limiting (configurable global + strict `auth` policy; `appsettings.json` `RateLimiting` section)
+- [x] Serilog structured logging (`Serilog.AspNetCore` + `WriteTo: Console`)
+- [x] Health checks (`/health`, EF Core `AddDbContextCheck`)
+- [x] API versioning formalized (`Asp.Versioning.Mvc`, `[ApiVersion("1.0")]`, reports `api-supported-versions`)
+- [x] Validation polish (FluentValidation intentionally skipped — DataAnnotations used)
+- [x] Renames: `MovieQueyRequest` → `MovieQueryRequest`, `AuthController.login` → `Login`
+- [x] Hermetic tests: `appsettings.Testing.json` + `Testing` env (no dependency on dev user-secrets)
 
 ## Phase 5 — Production ops ⬜
 
@@ -131,3 +132,36 @@
   configured TMDB ids; **off by default** (`Tmdb:Warmup:Enabled=false`) so local
   runs and tests make no surprise network calls.
 - Tests: **50 passing** (added `MovieCacheServiceTests` with a fake `ITmdbService`).
+
+### 2026-10-16 — Phase 4 complete (professional API polish) — commit `49dc818`
+- **Renames**: `MovieQueyRequest` → `MovieQueryRequest` (new file + refs in
+  `MoviesController`/`IMovieService`/`MovieService`); `AuthController.login` → `Login`
+  (already correct, no change).
+- **Packages** (API csproj): `Asp.Versioning.Mvc` 8.1.1, `Serilog.AspNetCore` 9.0.0,
+  `Microsoft.Extensions.Diagnostics.HealthChecks.EntityFrameworkCore` 9.0.20.
+- **Serilog**: `builder.Host.UseSerilog(...)` reading the `Serilog` config section +
+  `WriteTo: Console`; `app.UseSerilogRequestLogging()` after the exception handler.
+  In the `Testing` environment the minimum level is forced to Warning to keep
+  test output clean.
+- **API versioning**: `AddApiVersioning(...).AddMvc()` (the `.AddMvc()` call is what
+  actually wires versioning into MVC — without it `ReportApiVersions` silently does
+  nothing, caught by a test). Default 1.0, `AssumeDefaultVersionWhenUnspecified`,
+  `ReportApiVersions`; every controller now carries `[ApiVersion("1.0")]` and the URL
+  contract `/api/v1/...` is unchanged.
+- **CORS**: `Cors:AllowedOrigins` config → `MovieFlixClient` policy (empty by default
+  so native clients are unaffected).
+- **Rate limiting**: `AddRateLimiter` with a global fixed-window partitioner
+  (per authenticated user id, else per IP) + a named `auth` policy (per IP) applied to
+  `/auth/register|login|refresh` via `[EnableRateLimiting("auth")]`; rejection → 429.
+  Limits live in `RateLimitingSettings` bound from `appsettings.json`.
+- **Health checks**: `AddHealthChecks().AddDbContextCheck<MovieFlixDbContext>` exposed
+  at `/health`.
+- **Hermetic tests (important fix)**: the test host now runs in the `Testing`
+  environment with a new `appsettings.Testing.json`. Previously tests silently depended
+  on the developer's user-secrets for `Jwt:Key` (user secrets only load in Development),
+  which would break in CI. The Testing file supplies a test JWT key/issuer/audience, a
+  dummy TMDB token and relaxed rate limits. New `CrossCuttingIntegrationTests` covers
+  `/health` → Healthy, the `api-supported-versions` header, 401 on protected routes, and
+  the `auth` limiter returning 429 (limit overridden via `UseSetting`).
+- Tests: **54 passing**; run time dropped from ~17s to ~4s because EF console logging and
+  Serilog are silenced in `Testing`.
