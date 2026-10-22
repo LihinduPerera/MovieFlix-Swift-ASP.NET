@@ -1,0 +1,74 @@
+# MovieFlix deployment topology:
+#
+#   * `api`  — the ASP.NET Core API in a container (default database: SQLite,
+#              persisted in a named volume).
+#   * `db`   — optional PostgreSQL, behind the `postgres` profile.
+#
+# Quick start (SQLite):
+#   1. cp .env.example .env    # then fill in JWT_KEY and TMDB_ACCESS_TOKEN
+#   2. docker compose up --build
+#   3. curl http://localhost:8080/health
+#
+# Optional Postgres run:
+#   1. In .env set DATABASE_PROVIDER=Postgres and POSTGRES_PASSWORD.
+#   2. docker compose --profile postgres up --build
+#   See docs/OPERATIONS.md for the migration steps required for Postgres.
+#
+# NOTE: Docker is not installed on the machine this was authored on, so these
+# files were not executed locally — run `docker compose config` / `up` to
+# validate them.
+
+services:
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    image: movieflix-api
+    container_name: movieflix-api
+    ports:
+      - "8080:8080"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Database__Provider: ${DATABASE_PROVIDER:-Sqlite}
+      Jwt__Issuer: MovieFlix.Api
+      Jwt__Audience: MovieFlix.Client
+      # Secrets come from .env (never committed). The ${VAR:?...} form fails
+      # fast at startup instead of silently booting with a blank key.
+      Jwt__Key: ${JWT_KEY:?JWT_KEY must be set in .env}
+      Tmdb__BaseUrl: https://api.themoviedb.org/3/
+      Tmdb__AccessToken: ${TMDB_ACCESS_TOKEN:?TMDB_ACCESS_TOKEN must be set in .env}
+      ConnectionStrings__DefaultConnection: "Data Source=/data/MovieFlix.db"
+      ConnectionStrings__Postgres: ${POSTGRES_CONNECTION:-Host=db;Port=5432;Database=movieflix;Username=movieflix;Password=movieflix}
+    volumes:
+      - movieflix-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: unless-stopped
+
+  # Optional PostgreSQL (enabled with the `postgres` profile).
+  db:
+    image: postgres:17-alpine
+    profiles: ["postgres"]
+    container_name: movieflix-db
+    environment:
+      POSTGRES_USER: movieflix
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-movieflix}
+      POSTGRES_DB: movieflix
+    ports:
+      - "5432:5432"
+    volumes:
+      - movieflix-pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U movieflix -d movieflix"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  movieflix-data:
+  movieflix-pg:

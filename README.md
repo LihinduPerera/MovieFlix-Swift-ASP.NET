@@ -91,6 +91,8 @@ The backend test suite currently contains **54 passing test cases**.
   Rate limiting                       ASP.NET Core rate limiting
 
   Health checks                       ASP.NET Core health checks (`/health`)
+
+  Deployment                          Docker, docker-compose, GitHub Actions CI
   --------------------------------------------------------------------------
 
 ## 🗂️ Repository structure
@@ -199,6 +201,30 @@ dotnet test .\backend\MovieFlix.Api.Tests\MovieFlix.Api.Tests.csproj
 
 The integration tests use an isolated SQLite in-memory database rather
 than the development database.
+
+## 📦 Deploying with Docker
+
+The backend can run in a container (Docker Compose is the quickest way to try
+it):
+
+``` bash
+cp .env.example .env     # fill in JWT_KEY and TMDB_ACCESS_TOKEN
+docker compose up --build
+curl http://localhost:8080/health
+```
+
+The API listens on port 8080, runs as a non-root user, uses SQLite by
+default (persisted in a Docker volume), and exposes `/health` for probes.
+An optional PostgreSQL service is available behind the `postgres` compose
+profile.
+
+> **Note:** the Docker assets were authored without Docker installed on the
+> development machine, so they have not been executed locally. Validate them
+> before relying on them.
+
+Full operational details --- environments, secrets, PostgreSQL, backups and
+observability --- live in
+[`docs/OPERATIONS.md`](docs/OPERATIONS.md).
 
 ## 🔌 API overview
 
