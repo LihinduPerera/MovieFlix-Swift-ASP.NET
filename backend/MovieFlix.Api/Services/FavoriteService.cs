@@ -1,7 +1,6 @@
 ﻿using Microsoft.EntityFrameworkCore;
 using MovieFlix.Api.Data;
 using MovieFlix.Api.DTOs.Favorites;
-using MovieFlix.Api.DTOs.Tmdb;
 using MovieFlix.Api.Exceptions;
 using MovieFlix.Api.Models;
 
@@ -10,15 +9,17 @@ namespace MovieFlix.Api.Services
     public class FavoriteService : IFavoriteService
     {
         private readonly MovieFlixDbContext _context;
-        private readonly ITmdbService _tmdbService;
+        private readonly IMovieCacheService _movieCacheService;
 
-        public FavoriteService(MovieFlixDbContext context, ITmdbService tmdbService)
+        public FavoriteService(
+            MovieFlixDbContext context,
+            IMovieCacheService movieCacheService)
         {
             _context = context;
-            _tmdbService = tmdbService;
+            _movieCacheService = movieCacheService;
         }
 
-        public async Task<List<FavoriteMovieResponse>> GetUserFavoritesAsync(int userId)
+        public async Task<List<FavoriteMovieResponse>> GetUserFavoritesAsync(string userId)
         {
             var favorites = await _context.Favorites
                 .AsNoTracking()
@@ -39,7 +40,7 @@ namespace MovieFlix.Api.Services
             return favorites;
         }
 
-        public async Task<FavoriteMovieResponse?> AddFavoriteAsync(int userId, int movieId)
+        public async Task<FavoriteMovieResponse?> AddFavoriteAsync(string userId, int movieId)
         {
             var userExists = await _context.Users
                 .AsNoTracking()
@@ -95,7 +96,7 @@ namespace MovieFlix.Api.Services
                 .FirstAsync();
         }
 
-        public async Task<bool> RemoveFavoriteAsync(int userId,int movieId)
+        public async Task<bool> RemoveFavoriteAsync(string userId,int movieId)
         {
             var favorite = await _context.Favorites
                 .FirstOrDefaultAsync(favorite =>
@@ -116,56 +117,17 @@ namespace MovieFlix.Api.Services
 
 
         public async Task<FavoriteMovieResponse> AddFavoriteByTmdbIdAsync(
-            int userId,
+            string userId,
             int tmdbId,
             CancellationToken cancellationToken = default)
         {
-            // Step 1: Check whether the movie already exists locally.
-            var movie = await _context.Movies
-                .SingleOrDefaultAsync(
-                    movie => movie.TmdbId == tmdbId,
-                    cancellationToken);
+            // Resolve (and cache) the movie via the shared cache service, then
+            // create the favorite. The movie upsert is idempotent, so there is
+            // no need to wrap both steps in a single transaction.
+            var movie = await _movieCacheService.GetOrCreateByTmdbIdAsync(
+                tmdbId,
+                cancellationToken);
 
-            // Step 2: If missing, fetch its details from TMDB BEFORE
-            // opening a database transaction.
-            TmdbMovieDetailsResponse? tmdbMovie = null;
-
-            if (movie is null)
-            {
-                tmdbMovie = await _tmdbService.GetMovieDetailsAsync(
-                    tmdbId,
-                    cancellationToken);
-            }
-
-            // Step 3: Begin a database transaction.
-            await using var transaction =
-                await _context.Database.BeginTransactionAsync(
-                    cancellationToken);
-
-            // Step 4: Check again inside the transaction.
-            // Another request might have inserted the movie while
-            // we were fetching details from TMDB.
-            movie = await _context.Movies
-                .SingleOrDefaultAsync(
-                    movie => movie.TmdbId == tmdbId,
-                    cancellationToken);
-
-            // Step 5: Create the local movie only if it is still missing.
-            if (movie is null)
-            {
-                movie = new Movie
-                {
-                    TmdbId = tmdbMovie!.Id,
-                    Title = tmdbMovie.Title,
-                    Overview = tmdbMovie.Overview
-                };
-
-                _context.Movies.Add(movie);
-
-                await _context.SaveChangesAsync(cancellationToken);
-            }
-
-            // Step 6: Create the favorite using existing logic.
             var favorite = await AddFavoriteAsync(userId, movie.Id);
 
             if (favorite is null)
@@ -173,9 +135,6 @@ namespace MovieFlix.Api.Services
                 throw new InvalidOperationException(
                     "The user or movie could not be found.");
             }
-
-            // Step 7: Commit only after both operations succeed.
-            await transaction.CommitAsync(cancellationToken);
 
             return favorite;
         }

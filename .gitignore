@@ -1,0 +1,12 @@
+# Local environment files used by docker compose — these hold real secrets
+# and must never be committed. `.env.example` is the committed template.
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# NOTE: backend/.gitignore covers .NET build output, the SQLite database
+# files, test results and other editor noise for the backend projects.

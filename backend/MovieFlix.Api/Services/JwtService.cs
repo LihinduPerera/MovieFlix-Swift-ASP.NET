@@ -16,15 +16,26 @@ public class JwtService : IJwtService
         _jwtSettings = jwtOptions.Value;
     }
 
-    public string GenerateToken(int userId, string email, string role)
+    public TimeSpan AccessTokenLifetime =>
+        TimeSpan.FromMinutes(_jwtSettings.AccessTokenMinutes);
+
+    public string GenerateToken(
+        string userId,
+        string email,
+        string displayName,
+        IEnumerable<string> roles)
     {
         var claims = new List<Claim>
         {
-            new(JwtRegisteredClaimNames.Sub, userId.ToString()),
+            new(JwtRegisteredClaimNames.Sub, userId),
             new(JwtRegisteredClaimNames.Email, email),
-            new(ClaimTypes.Role, role),
+            new("display_name", displayName),
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
+
+        // One role claim per role so [Authorize(Roles = "Admin")] works.
+        claims.AddRange(
+            roles.Select(role => new Claim(ClaimTypes.Role, role)));
 
         var key = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(_jwtSettings.Key));
@@ -37,7 +48,8 @@ public class JwtService : IJwtService
             issuer: _jwtSettings.Issuer,
             audience: _jwtSettings.Audience,
             claims: claims,
-            expires: DateTime.UtcNow.AddMinutes(30),
+            notBefore: DateTime.UtcNow,
+            expires: DateTime.UtcNow.Add(AccessTokenLifetime),
             signingCredentials: credentials);
 
         return new JwtSecurityTokenHandler()

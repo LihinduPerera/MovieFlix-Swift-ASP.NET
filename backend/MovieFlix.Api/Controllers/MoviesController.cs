@@ -1,11 +1,14 @@
+using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.OutputCaching;
 using MovieFlix.Api.DTOs.Movies;
 using MovieFlix.Api.Services;
 
 namespace MovieFlix.Api.Controllers;
 
 [ApiController]
+[ApiVersion("1.0")]
 [Route("api/v1/[controller]")]
 public class MoviesController : ControllerBase
 {
@@ -19,7 +22,7 @@ public class MoviesController : ControllerBase
     } 
 
     [HttpGet]
-    public async Task<IActionResult> GetMovies([FromQuery] MovieQueyRequest request)
+    public async Task<IActionResult> GetMovies([FromQuery] MovieQueryRequest request)
     {
         var movies = await _movieService.GetMoviesAsync(request);
 
@@ -98,6 +101,7 @@ public class MoviesController : ControllerBase
     }
 
     [HttpGet("search")]
+    [OutputCache(PolicyName = "tmdb-search")]
     public async Task<ActionResult<MovieSearchPageResponse>> SearchMovies(
         [FromQuery] string query,
         [FromQuery] int page = 1,
@@ -157,6 +161,7 @@ public class MoviesController : ControllerBase
 
 
     [HttpGet("tmdb/{tmdbId:int}")]
+    [OutputCache(PolicyName = "tmdb-details")]
     public async Task<ActionResult<MovieDetailsResponse>> GetTmdbMovieDetails(
         int tmdbId,
         CancellationToken cancellationToken)

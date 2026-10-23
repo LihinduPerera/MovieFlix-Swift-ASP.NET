@@ -11,16 +11,16 @@ namespace MovieFlix.Api.Services
             _httpContextAccessor = httpContextAccessor;
         }
 
-        public int UserId
+        private ClaimsPrincipal? Principal =>
+            _httpContextAccessor.HttpContext?.User;
+
+        public string UserId
         {
             get
             {
-                var userIdClaim = _httpContextAccessor
-                    .HttpContext?
-                    .User
-                    .FindFirstValue(ClaimTypes.NameIdentifier);
+                var userId = Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
 
-                if (!int.TryParse(userIdClaim, out var userId))
+                if (string.IsNullOrWhiteSpace(userId))
                 {
                     throw new UnauthorizedAccessException("Authenticated user ID is missing.");
                 }
@@ -33,17 +33,29 @@ namespace MovieFlix.Api.Services
         {
             get
             {
-                var emailClaim = _httpContextAccessor
-                    .HttpContext?
-                    .User
-                    .FindFirstValue(ClaimTypes.Email);
+                var email = Principal?.FindFirstValue(ClaimTypes.Email);
 
-                if (string.IsNullOrWhiteSpace(emailClaim))
+                if (string.IsNullOrWhiteSpace(email))
                 {
                     throw new UnauthorizedAccessException("Authenticated user email is missing.");
                 }
 
-                return emailClaim;
+                return email;
+            }
+        }
+
+        public string DisplayName
+        {
+            get
+            {
+                var displayName = Principal?.FindFirstValue("display_name");
+
+                if (string.IsNullOrWhiteSpace(displayName))
+                {
+                    throw new UnauthorizedAccessException("Authenticated user display name is missing.");
+                }
+
+                return displayName;
             }
         }
     }

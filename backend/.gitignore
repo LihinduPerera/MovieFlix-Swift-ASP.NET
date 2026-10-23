@@ -60,4 +60,8 @@ coverage.xml
 
 # Generated files
 Generated/
-*appsettings.json
+
+# NOTE: appsettings.json is intentionally TRACKED (it holds only non-secret
+# config). Real secrets live in User Secrets (dev) or environment variables.
+# appsettings.*.json may contain environment-specific overrides — keep secrets
+# out of them, or they will be committed.

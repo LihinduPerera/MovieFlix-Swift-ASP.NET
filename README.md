@@ -16,11 +16,32 @@ engineering decisions behind it and build a foundation that can grow.
 
 -   **Movie data from TMDB** --- search for movies and retrieve movie
     details through the backend.
--   **REST API** --- versioned endpoints under `/api/v1`.
--   **User accounts and authentication** --- password hashing and
-    JWT-based login.
+-   **REST API** --- versioned endpoints under `/api/v1`; the API reports its
+    supported versions via the `api-supported-versions` response header.
+-   **User accounts and authentication** --- ASP.NET Core Identity with
+    password hashing, JWT-based login, refresh-token rotation, and
+    role-based authorization.
 -   **Favorites** --- add, list, and remove a user's favorite movies.
+-   **Watchlist** --- a separate "watch later" list per user.
+-   **Ratings** --- 1--5 star ratings with a community average per movie.
+-   **Watch history** --- playback progress, a Continue Watching rail, and
+    a paginated Recently Watched list.
+-   **Reviews** --- create, read, update, and delete movie reviews with
+    ownership rules and pagination.
+-   **Collections** --- user-defined collections that group movies
+    (many-to-many).
+-   **Search history** --- recent, de-duplicated search terms per user.
+-   **User preferences** --- language, region, theme, and toggles per user.
 -   **Database persistence** --- Entity Framework Core with SQLite.
+-   **TMDB resilience and caching** --- automatic retries, timeouts, a circuit
+    breaker, and output caching for TMDB-backed responses.
+-   **Rate limiting** --- a global per-client request budget plus a stricter
+    limit on the login, register, and refresh endpoints (configurable).
+-   **Health checks** --- a `/health` endpoint that verifies database
+    connectivity for probes and load balancers.
+-   **Structured logging** --- request/response logging via Serilog writing
+    structured events to the console.
+-   **CORS** --- configurable allowed origins for a future web front-end.
 -   **Validation and error handling** --- consistent Problem Details
     responses for API errors, including invalid input and missing
     records.
@@ -29,7 +50,7 @@ engineering decisions behind it and build a foundation that can grow.
 -   **Automated tests** --- service tests and API integration tests
     using xUnit and an isolated SQLite in-memory database.
 
-The backend test suite currently contains **6 passing test cases**.
+The backend test suite currently contains **54 passing test cases**.
 
 ## 🧰 Tech stack
 
@@ -44,16 +65,34 @@ The backend test suite currently contains **6 passing test cases**.
 
   Data access                         Entity Framework Core
 
-  Authentication                      JWT bearer authentication, password
-                                      hashing
+  Authentication                      ASP.NET Core Identity, JWT bearer
+                                      authentication, refresh tokens,
+                                      role-based authorization
 
   External movie data                 [The Movie Database
                                       (TMDB)](https://www.themoviedb.org/)
+
+  Resilience                          Polly via
+                                      `Microsoft.Extensions.Http.Resilience`
+                                      (retry, timeout, circuit breaker)
+
+  Caching                             ASP.NET Core output caching
 
   API documentation                   Swagger / OpenAPI
 
   Testing                             xUnit, ASP.NET Core integration
                                       testing
+
+  Logging                             Serilog (structured console logging)
+
+  API versioning                      Asp.Versioning (v1, reported on
+                                      responses)
+
+  Rate limiting                       ASP.NET Core rate limiting
+
+  Health checks                       ASP.NET Core health checks (`/health`)
+
+  Deployment                          Docker, docker-compose, GitHub Actions CI
   --------------------------------------------------------------------------
 
 ## 🗂️ Repository structure
@@ -82,7 +121,9 @@ ASP.NET Core REST API
     v                  v
 SQLite database       TMDB API
 (users, movies,       (external movie data)
- favorites)
+ favorites, watchlist,
+ ratings, reviews,
+ collections, ...)
 ```
 
 The backend acts as the boundary between the iOS app, persisted user
@@ -106,17 +147,31 @@ cd MovieFlix-Swift-ASP.NET
 
 ### 2. Configure the backend
 
-Configure the TMDB and JWT settings required by the API using **User
-Secrets**, environment variables, or another local configuration
-mechanism supported by ASP.NET Core.
+Secrets are **not** stored in `appsettings.json` (that file only holds
+non-secret defaults). Provide the two required secrets using **User
+Secrets** (recommended for local development), environment variables, or
+another ASP.NET Core configuration provider.
 
--   Add your own TMDB API key.
--   Set a strong, unique JWT signing key suitable for local development.
+Using User Secrets (already wired up via the `UserSecretsId` in
+`MovieFlix.Api.csproj`):
+
+``` bash
+cd backend/MovieFlix.Api
+
+# TMDB API read access token (from https://www.themoviedb.org/settings/api)
+dotnet user-secrets set "Tmdb:AccessToken" "<your-tmdb-token>"
+
+# A strong, unique JWT signing key (>= 32 bytes) for local development
+dotnet user-secrets set "Jwt:Key" "<your-strong-jwt-key>"
+```
+
 -   Do not commit real API keys, signing keys, passwords, or other
-    secrets to Git.
+    secrets to Git. User Secrets are stored outside the repository.
 
-Use the configuration classes and settings expected by the current
-backend code when naming these values.
+> **Note:** `Jwt:Key`, `Tmdb:AccessToken`, and other secrets were removed
+> from source control. If you are pulling this repo for the first time,
+> the API will not authenticate or call TMDB until you set the secrets
+> above.
 
 ### 3. Start the API
 
@@ -147,6 +202,30 @@ dotnet test .\backend\MovieFlix.Api.Tests\MovieFlix.Api.Tests.csproj
 The integration tests use an isolated SQLite in-memory database rather
 than the development database.
 
+## 📦 Deploying with Docker
+
+The backend can run in a container (Docker Compose is the quickest way to try
+it):
+
+``` bash
+cp .env.example .env     # fill in JWT_KEY and TMDB_ACCESS_TOKEN
+docker compose up --build
+curl http://localhost:8080/health
+```
+
+The API listens on port 8080, runs as a non-root user, uses SQLite by
+default (persisted in a Docker volume), and exposes `/health` for probes.
+An optional PostgreSQL service is available behind the `postgres` compose
+profile.
+
+> **Note:** the Docker assets were authored without Docker installed on the
+> development machine, so they have not been executed locally. Validate them
+> before relying on them.
+
+Full operational details --- environments, secrets, PostgreSQL, backups and
+observability --- live in
+[`docs/OPERATIONS.md`](docs/OPERATIONS.md).
+
 ## 🔌 API overview
 
 The API uses the `/api/v1` route prefix. Representative endpoints
@@ -155,6 +234,10 @@ include:
   -----------------------------------------------------------------------------------------------------
   Purpose                 Endpoint                                              Access
   ----------------------- ----------------------------------------------------- -----------------------
+  Register / log in       `POST /api/v1/Auth/register`, `POST /api/v1/Auth/login`  Public
+
+  Refresh / log out       `POST /api/v1/Auth/refresh`, `POST /api/v1/Auth/logout`  Public / token
+
   Search movies through   `GET /api/v1/Movies/search?query=...`                 Public
   TMDB                                                                          
 
@@ -169,17 +252,27 @@ include:
   Manage local movie      `POST`, `PUT`, `DELETE /api/v1/Movies` routes         Restricted by
   records                                                                       authorization
 
-  Get a user's favorites  `GET /api/v1/Users/{userId}/favorites`                Depends on the
-                                                                                configured
-                                                                                authorization policy
+  Manage favorites        `GET`, `POST`, `DELETE /api/v1/me/favorites`          Authenticated
 
-  Add a favorite          `POST /api/v1/Users/{userId}/favorites/{movieId}`     Depends on the
-                                                                                configured
-                                                                                authorization policy
+  Manage watchlist        `GET`, `POST`, `DELETE /api/v1/me/watchlist`          Authenticated
 
-  Remove a favorite       `DELETE /api/v1/Users/{userId}/favorites/{movieId}`   Depends on the
-                                                                                configured
-                                                                                authorization policy
+  Rate movies             `GET`, `PUT`, `DELETE /api/v1/me/ratings/{movieId}`   Authenticated
+
+  Community rating        `GET /api/v1/movies/{movieId}/ratings`                Public
+
+  Watch history           `GET /api/v1/me/history`, `/continue`                 Authenticated
+
+  Movie reviews           `GET`, `POST /api/v1/movies/{movieId}/reviews`        Public / Authenticated
+
+  Edit / delete a review  `PUT`, `DELETE /api/v1/reviews/{reviewId}`            Authenticated (owner)
+
+  Manage collections      `GET`, `POST`, `PUT`, `DELETE /api/v1/me/collections` Authenticated
+
+  Search history          `GET`, `POST`, `DELETE /api/v1/me/search-history`     Authenticated
+
+  User preferences        `GET`, `PUT /api/v1/me/preferences`                   Authenticated
+
+  Health check            `GET /health`                                          Public
   -----------------------------------------------------------------------------------------------------
 
 Check the current controllers and Swagger documentation for exact

@@ -3,6 +3,8 @@ using Microsoft.Extensions.Options;
 using MovieFlix.Api.Configuration;
 using MovieFlix.Api.DTOs.Tmdb;
 using MovieFlix.Api.Exceptions;
+using Polly.CircuitBreaker;
+using Polly.Timeout;
 
 namespace MovieFlix.Api.Services
 {
@@ -55,6 +57,16 @@ namespace MovieFlix.Api.Services
                 // HttpClient timed out, rather than the caller cancelling.
                 throw new TmdbServiceException();
             }
+            catch (TimeoutRejectedException)
+            {
+                // The resilience pipeline's attempt or total timeout fired.
+                throw new TmdbServiceException();
+            }
+            catch (BrokenCircuitException)
+            {
+                // TMDB has been failing consistently; the circuit is open.
+                throw new TmdbServiceException();
+            }
         }
 
 
@@ -93,6 +105,16 @@ namespace MovieFlix.Api.Services
             catch (OperationCanceledException)
                 when (!cancellationToken.IsCancellationRequested)
             {
+                throw new TmdbServiceException();
+            }
+            catch (TimeoutRejectedException)
+            {
+                // The resilience pipeline's attempt or total timeout fired.
+                throw new TmdbServiceException();
+            }
+            catch (BrokenCircuitException)
+            {
+                // TMDB has been failing consistently; the circuit is open.
                 throw new TmdbServiceException();
             }
         }
