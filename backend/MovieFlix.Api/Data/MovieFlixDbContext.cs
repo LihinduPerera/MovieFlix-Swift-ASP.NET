@@ -20,6 +20,22 @@ namespace MovieFlix.Api.Data
         }
     }
 
+    /// <summary>
+    /// Persists <see cref="MediaType"/> using the public lowercase wire values
+    /// (<c>movie</c>/<c>tv</c>) instead of the CLR enum names.
+    /// </summary>
+    public sealed class MediaTypeValueConverter : ValueConverter<MediaType, string>
+    {
+        public MediaTypeValueConverter()
+            : base(
+                value => value == MediaType.Movie ? "movie" : "tv",
+                value => string.Equals(value, "movie", StringComparison.OrdinalIgnoreCase)
+                    ? MediaType.Movie
+                    : MediaType.Tv)
+        {
+        }
+    }
+
     /// <summary>Nullable counterpart of <see cref="UtcDateTimeConverter"/>.</summary>
     public sealed class NullableUtcDateTimeConverter : ValueConverter<DateTime?, DateTime?>
     {
@@ -101,7 +117,7 @@ namespace MovieFlix.Api.Data
 
                 // Enum values are persisted as "movie" / "tv".
                 entity.Property(media => media.MediaType)
-                    .HasConversion<string>()
+                    .HasConversion<MediaTypeValueConverter>()
                     .HasMaxLength(16);
             });
 
@@ -110,7 +126,7 @@ namespace MovieFlix.Api.Data
                 entity.HasIndex(genre => new { genre.TmdbId, genre.MediaType }).IsUnique();
 
                 entity.Property(genre => genre.MediaType)
-                    .HasConversion<string>()
+                    .HasConversion<MediaTypeValueConverter>()
                     .HasMaxLength(16);
             });
 

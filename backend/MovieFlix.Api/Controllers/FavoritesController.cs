@@ -36,7 +36,7 @@ namespace MovieFlix.Api.Controllers
         }
 
         /// <summary>Adds a favorite. Repeating the request is a no-op.</summary>
-        [HttpPut("{mediaType:mediaType}/{tmdbId:int}")]
+        [HttpPut("{mediaType}/{tmdbId:int}")]
         public async Task<ActionResult<SavedMediaResponse>> Add(
             MediaType mediaType,
             int tmdbId,
@@ -49,7 +49,7 @@ namespace MovieFlix.Api.Controllers
                 cancellationToken));
         }
 
-        [HttpDelete("{mediaType:mediaType}/{tmdbId:int}")]
+        [HttpDelete("{mediaType}/{tmdbId:int}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public async Task<IActionResult> Remove(
             MediaType mediaType,

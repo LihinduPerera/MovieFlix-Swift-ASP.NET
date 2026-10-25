@@ -41,7 +41,7 @@ namespace MovieFlix.Api.Controllers
         }
 
         /// <summary>Popular titles, optionally filtered to movies or TV.</summary>
-        [HttpGet("{mediaType:mediaType}/popular")]
+        [HttpGet("{mediaType}/popular")]
         [OutputCache(PolicyName = "tmdb-feed")]
         public Task<ActionResult<PagedResponse<MediaSummaryResponse>>> GetPopular(
             MediaType mediaType,
@@ -50,7 +50,7 @@ namespace MovieFlix.Api.Controllers
             GetFeed(mediaType, MediaFeed.Popular, request, cancellationToken);
 
         /// <summary>Top-rated titles, optionally filtered to movies or TV.</summary>
-        [HttpGet("{mediaType:mediaType}/top-rated")]
+        [HttpGet("{mediaType}/top-rated")]
         [OutputCache(PolicyName = "tmdb-feed")]
         public Task<ActionResult<PagedResponse<MediaSummaryResponse>>> GetTopRated(
             MediaType mediaType,
@@ -91,7 +91,7 @@ namespace MovieFlix.Api.Controllers
             GetFeed(MediaType.Tv, MediaFeed.AiringToday, request, cancellationToken);
 
         /// <summary>Discover titles by genre, year, rating and sort order.</summary>
-        [HttpGet("{mediaType:mediaType}/discover")]
+        [HttpGet("{mediaType}/discover")]
         [OutputCache(PolicyName = "tmdb-discover")]
         public async Task<ActionResult<PagedResponse<MediaSummaryResponse>>> Discover(
             MediaType mediaType,
@@ -105,7 +105,7 @@ namespace MovieFlix.Api.Controllers
         }
 
         /// <summary>Full details for one movie or TV show.</summary>
-        [HttpGet("{mediaType:mediaType}/{tmdbId:int}")]
+        [HttpGet("{mediaType}/{tmdbId:int}")]
         [OutputCache(PolicyName = "tmdb-details")]
         [ProducesResponseType(typeof(MediaDetailsResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
@@ -129,6 +129,7 @@ namespace MovieFlix.Api.Controllers
 
         /// <summary>Season summaries for a TV show (specials are excluded).</summary>
         [HttpGet("tv/{tmdbId:int}/seasons")]
+        [OutputCache(PolicyName = "tmdb-season")]
         public async Task<ActionResult<List<SeasonSummaryResponse>>> GetSeasons(
             int tmdbId,
             [FromQuery] LanguageQueryRequest request,
@@ -162,7 +163,7 @@ namespace MovieFlix.Api.Controllers
         }
 
         /// <summary>Membership, rating, review and progress state for one title.</summary>
-        [HttpGet("{mediaType:mediaType}/{tmdbId:int}/state")]
+        [HttpGet("{mediaType}/{tmdbId:int}/state")]
         public async Task<ActionResult<MediaStateResponse>> GetState(
             MediaType mediaType,
             int tmdbId,
@@ -176,7 +177,7 @@ namespace MovieFlix.Api.Controllers
         }
 
         /// <summary>Community rating aggregate for one title.</summary>
-        [HttpGet("{mediaType:mediaType}/{tmdbId:int}/ratings")]
+        [HttpGet("{mediaType}/{tmdbId:int}/ratings")]
         public async Task<ActionResult<CommunityRatingResponse>> GetCommunityRating(
             MediaType mediaType,
             int tmdbId,
@@ -194,7 +195,7 @@ namespace MovieFlix.Api.Controllers
         }
 
         /// <summary>Paginated public reviews for one title.</summary>
-        [HttpGet("{mediaType:mediaType}/{tmdbId:int}/reviews")]
+        [HttpGet("{mediaType}/{tmdbId:int}/reviews")]
         public async Task<ActionResult<PagedResponse<ReviewResponse>>> GetReviews(
             MediaType mediaType,
             int tmdbId,
@@ -215,7 +216,7 @@ namespace MovieFlix.Api.Controllers
         }
 
         /// <summary>Creates the caller's review for one title.</summary>
-        [HttpPost("{mediaType:mediaType}/{tmdbId:int}/reviews")]
+        [HttpPost("{mediaType}/{tmdbId:int}/reviews")]
         [Authorize]
         [ProducesResponseType(typeof(ReviewResponse), StatusCodes.Status201Created)]
         [ProducesResponseType(StatusCodes.Status409Conflict)]

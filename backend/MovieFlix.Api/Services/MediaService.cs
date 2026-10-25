@@ -18,6 +18,24 @@ namespace MovieFlix.Api.Services
     public class MediaService : IMediaService
     {
         private const int TmdbPageSize = 20;
+        private const int MaxCastMembers = 20;
+        private const int MaxCrewMembers = 20;
+        private const int MaxSimilarTitles = 12;
+
+        /// <summary>The crew jobs considered useful in a title details response.</summary>
+        private static readonly HashSet<string> KeyCrewJobs = new(
+            [
+                "Director",
+                "Writer",
+                "Screenplay",
+                "Story",
+                "Producer",
+                "Executive Producer",
+                "Director of Photography",
+                "Editor",
+                "Original Music Composer"
+            ],
+            StringComparer.OrdinalIgnoreCase);
 
         private readonly ITmdbService _tmdbService;
         private readonly IMediaCacheService _cacheService;
@@ -447,6 +465,7 @@ namespace MovieFlix.Api.Services
                 {
                     Cast = details.Credits?.Cast
                         .OrderBy(member => member.Order)
+                        .Take(MaxCastMembers)
                         .Select(member => new CastMemberResponse
                         {
                             Id = member.Id,
@@ -457,6 +476,9 @@ namespace MovieFlix.Api.Services
                         })
                         .ToList() ?? [],
                     Crew = details.Credits?.Crew
+                        .Where(member => member.Job is not null
+                            && KeyCrewJobs.Contains(member.Job))
+                        .Take(MaxCrewMembers)
                         .Select(member => new CrewMemberResponse
                         {
                             Id = member.Id,
@@ -468,6 +490,10 @@ namespace MovieFlix.Api.Services
                         .ToList() ?? []
                 },
                 Videos = details.Videos?.Results
+                    .Where(video => string.Equals(
+                        video.Site,
+                        "YouTube",
+                        StringComparison.OrdinalIgnoreCase))
                     .Select(video => new VideoResponse
                     {
                         Id = video.Id,
@@ -483,7 +509,7 @@ namespace MovieFlix.Api.Services
                 Similar = details.Similar?.Results
                     .Where(result => result.MediaType is null
                         || MediaMappings.ParseMediaType(result.MediaType) == media.MediaType)
-                    .Take(20)
+                    .Take(MaxSimilarTitles)
                     .Select(result => MediaMappings.ToSummary(result, media.MediaType))
                     .ToList() ?? [],
                 Seasons = details.Seasons

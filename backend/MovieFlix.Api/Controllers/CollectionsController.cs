@@ -96,7 +96,7 @@ namespace MovieFlix.Api.Controllers
         }
 
         /// <summary>Adds a title to a collection. Repeating the request is a no-op.</summary>
-        [HttpPut("me/collections/{collectionId:int}/items/{mediaType:mediaType}/{tmdbId:int}")]
+        [HttpPut("me/collections/{collectionId:int}/items/{mediaType}/{tmdbId:int}")]
         [Authorize]
         public async Task<ActionResult<CollectionDetailResponse>> AddItem(
             int collectionId,
@@ -112,7 +112,7 @@ namespace MovieFlix.Api.Controllers
                 cancellationToken));
         }
 
-        [HttpDelete("me/collections/{collectionId:int}/items/{mediaType:mediaType}/{tmdbId:int}")]
+        [HttpDelete("me/collections/{collectionId:int}/items/{mediaType}/{tmdbId:int}")]
         [Authorize]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public async Task<IActionResult> RemoveItem(

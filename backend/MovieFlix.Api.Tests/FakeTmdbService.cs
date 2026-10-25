@@ -60,6 +60,12 @@ public sealed class FakeTmdbService : ITmdbService
     /// <summary>When true, the next details request simulates provider downtime.</summary>
     public bool ThrowUnavailableOnDetails { get; set; }
 
+    /// <summary>When true, the next details request simulates TMDB rate limiting.</summary>
+    public bool ThrowRateLimitedOnDetails { get; set; }
+
+    /// <summary>When true, the next details request simulates a TMDB server error.</summary>
+    public bool ThrowBadGatewayOnDetails { get; set; }
+
     public void AddMovie(
         int id,
         string title,
@@ -178,6 +184,16 @@ public sealed class FakeTmdbService : ITmdbService
         if (ThrowUnavailableOnDetails)
         {
             throw new TmdbUnavailableException();
+        }
+
+        if (ThrowRateLimitedOnDetails)
+        {
+            throw new TmdbRateLimitedException(37);
+        }
+
+        if (ThrowBadGatewayOnDetails)
+        {
+            throw new TmdbServiceException();
         }
 
         if (FailDetails == (mediaType, tmdbId))

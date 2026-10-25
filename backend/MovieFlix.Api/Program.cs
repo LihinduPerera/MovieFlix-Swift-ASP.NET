@@ -20,7 +20,6 @@ using MovieFlix.Api.Configuration;
 using MovieFlix.Api.Data;
 using MovieFlix.Api.Exceptions;
 using MovieFlix.Api.Models;
-using MovieFlix.Api.Routing;
 using MovieFlix.Api.Services;
 using MovieFlix.Api.Swagger;
 using Polly;
@@ -50,11 +49,6 @@ builder.Services
         options.JsonSerializerOptions.Converters.Add(
             new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
     });
-
-builder.Services.Configure<RouteOptions>(options =>
-{
-    options.ConstraintMap["mediaType"] = typeof(MediaTypeRouteConstraint);
-});
 
 builder.Services
     .AddApiVersioning(options =>
@@ -266,6 +260,11 @@ builder.Services.AddOutputCache(options =>
     options.AddPolicy("tmdb-details", policy => policy
         .Expire(TimeSpan.FromHours(1))
         .SetVaryByRouteValue("mediaType", "tmdbId")
+        .SetVaryByQuery("language"));
+
+    options.AddPolicy("tmdb-season", policy => policy
+        .Expire(TimeSpan.FromHours(6))
+        .SetVaryByRouteValue("tmdbId")
         .SetVaryByQuery("language"));
 
     options.AddPolicy("tmdb-genres", policy => policy

@@ -20,7 +20,7 @@ namespace MovieFlix.Api.Controllers
             _ratingService = ratingService;
         }
 
-        [HttpGet("{mediaType:mediaType}/{tmdbId:int}")]
+        [HttpGet("{mediaType}/{tmdbId:int}")]
         [ProducesResponseType(typeof(MediaRatingResponse), StatusCodes.Status200OK)]
         [ProducesResponseType(StatusCodes.Status404NotFound)]
         public async Task<ActionResult<MediaRatingResponse>> Get(
@@ -39,7 +39,7 @@ namespace MovieFlix.Api.Controllers
                 : Ok(rating);
         }
 
-        [HttpPut("{mediaType:mediaType}/{tmdbId:int}")]
+        [HttpPut("{mediaType}/{tmdbId:int}")]
         public async Task<ActionResult<MediaRatingResponse>> Rate(
             MediaType mediaType,
             int tmdbId,
@@ -54,7 +54,7 @@ namespace MovieFlix.Api.Controllers
                 cancellationToken));
         }
 
-        [HttpDelete("{mediaType:mediaType}/{tmdbId:int}")]
+        [HttpDelete("{mediaType}/{tmdbId:int}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public async Task<IActionResult> Remove(
             MediaType mediaType,

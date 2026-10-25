@@ -65,7 +65,7 @@ namespace MovieFlix.Api.Controllers
         }
 
         /// <summary>Records progress for a movie, or for a TV show's current episode.</summary>
-        [HttpPut("{mediaType:mediaType}/{tmdbId:int}")]
+        [HttpPut("{mediaType}/{tmdbId:int}")]
         public async Task<ActionResult<WatchHistoryItemResponse>> RecordProgress(
             MediaType mediaType,
             int tmdbId,
@@ -98,7 +98,7 @@ namespace MovieFlix.Api.Controllers
                 cancellationToken));
         }
 
-        [HttpDelete("{mediaType:mediaType}/{tmdbId:int}")]
+        [HttpDelete("{mediaType}/{tmdbId:int}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public async Task<IActionResult> Remove(
             MediaType mediaType,

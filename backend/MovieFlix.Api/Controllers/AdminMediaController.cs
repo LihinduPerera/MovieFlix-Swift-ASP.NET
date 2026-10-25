@@ -26,7 +26,7 @@ namespace MovieFlix.Api.Controllers
         }
 
         /// <summary>Forces a metadata refresh from TMDB.</summary>
-        [HttpPost("{mediaType:mediaType}/{tmdbId:int}/refresh")]
+        [HttpPost("{mediaType}/{tmdbId:int}/refresh")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public async Task<IActionResult> Refresh(
             MediaType mediaType,

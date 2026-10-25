@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
-namespace MovieFlix.Api.Data.Migrations
+namespace MovieFlix.Api.Migrations
 {
     /// <inheritdoc />
     public partial class InitialMediaSchema : Migration

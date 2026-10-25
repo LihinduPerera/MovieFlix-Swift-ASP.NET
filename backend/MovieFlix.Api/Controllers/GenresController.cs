@@ -20,7 +20,7 @@ namespace MovieFlix.Api.Controllers
         }
 
         /// <summary>Returns the TMDB genre list for movies or TV shows.</summary>
-        [HttpGet("{mediaType:mediaType}")]
+        [HttpGet("{mediaType}")]
         [OutputCache(PolicyName = "tmdb-genres")]
         [ProducesResponseType(typeof(List<GenreResponse>), StatusCodes.Status200OK)]
         public async Task<ActionResult<List<GenreResponse>>> GetGenres(

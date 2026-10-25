@@ -8,10 +8,10 @@ using MovieFlix.Api.Data;
 
 #nullable disable
 
-namespace MovieFlix.Api.Data.Migrations
+namespace MovieFlix.Api.Migrations
 {
     [DbContext(typeof(MovieFlixDbContext))]
-    [Migration("20261025163650_InitialMediaSchema")]
+    [Migration("20261025185106_InitialMediaSchema")]
     partial class InitialMediaSchema
     {
         /// <inheritdoc />

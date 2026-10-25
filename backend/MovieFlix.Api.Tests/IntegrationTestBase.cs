@@ -3,7 +3,10 @@ using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.DependencyInjection;
 using MovieFlix.Api.DTOs.Auth;
+using MovieFlix.Api.Models;
 
 namespace MovieFlix.Api.Tests;
 
@@ -62,6 +65,32 @@ public abstract class IntegrationTestBase : IClassFixture<MovieFlixApiFactory>
 
     protected static string UniqueEmail() =>
         $"user-{Guid.NewGuid():N}@example.com";
+
+    protected async Task<LoginResponse> LoginAsync(
+        HttpClient client,
+        string email,
+        string password = "Password1!")
+    {
+        var response = await client.PostAsJsonAsync(
+            "/api/v1/auth/login",
+            new { email, password });
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        return await ReadAsync<LoginResponse>(response);
+    }
+
+    protected async Task GrantRoleAsync(string userId, string role)
+    {
+        using var scope = Factory.Services.CreateScope();
+        var userManager = scope.ServiceProvider
+            .GetRequiredService<UserManager<ApplicationUser>>();
+        var user = await userManager.FindByIdAsync(userId)
+            ?? throw new InvalidOperationException("Test user was not found.");
+
+        var result = await userManager.AddToRoleAsync(user, role);
+        Assert.True(result.Succeeded, string.Join(", ", result.Errors));
+    }
 
     protected static async Task<T> ReadAsync<T>(HttpResponseMessage response)
     {

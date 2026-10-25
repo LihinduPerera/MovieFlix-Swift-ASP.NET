@@ -7,7 +7,7 @@ using MovieFlix.Api.Data;
 
 #nullable disable
 
-namespace MovieFlix.Api.Data.Migrations
+namespace MovieFlix.Api.Migrations
 {
     [DbContext(typeof(MovieFlixDbContext))]
     partial class MovieFlixDbContextModelSnapshot : ModelSnapshot

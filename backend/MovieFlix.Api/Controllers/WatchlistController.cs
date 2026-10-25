@@ -35,7 +35,7 @@ namespace MovieFlix.Api.Controllers
                 cancellationToken));
         }
 
-        [HttpPut("{mediaType:mediaType}/{tmdbId:int}")]
+        [HttpPut("{mediaType}/{tmdbId:int}")]
         public async Task<ActionResult<SavedMediaResponse>> Add(
             MediaType mediaType,
             int tmdbId,
@@ -48,7 +48,7 @@ namespace MovieFlix.Api.Controllers
                 cancellationToken));
         }
 
-        [HttpDelete("{mediaType:mediaType}/{tmdbId:int}")]
+        [HttpDelete("{mediaType}/{tmdbId:int}")]
         [ProducesResponseType(StatusCodes.Status204NoContent)]
         public async Task<IActionResult> Remove(
             MediaType mediaType,
