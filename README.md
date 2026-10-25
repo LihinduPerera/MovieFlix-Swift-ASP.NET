@@ -19,7 +19,8 @@ MovieFlix is a unified movie and TV discovery platform with a SwiftUI client and
 - **CORS** — configurable allowed origins for a future web front-end.
 - **Validation and error handling** — consistent Problem Details responses for API errors, including invalid input and missing records.
 - **Authorization** — protected operations using JWT authentication and role-based access rules.
-- **Automated tests** — integration tests using xUnit and an isolated SQLite in-memory database (no external network calls).
+- **Automated tests** — 76 hermetic integration/unit tests using xUnit and an isolated SQLite database (no external network calls, fake TMDB service).
+- **One clean schema** — a single `InitialMediaSchema` EF Core migration; the database is recreated from scratch and media types are stored as lowercase `movie`/`tv`.
 
 See [docs/API_CONTRACT.md](docs/API_CONTRACT.md) for the complete client-facing contract and [docs/openapi.json](docs/openapi.json) for the OpenAPI document.
 
@@ -98,11 +99,23 @@ dotnet build backend/MovieFlix.sln
 dotnet run --project backend/MovieFlix.Api/MovieFlix.Api.csproj
 ```
 
+The launch profiles serve `http://localhost:5122` and
+`https://localhost:7014`; Swagger UI is at `/swagger` in Development. On first
+startup the app applies the single `InitialMediaSchema` migration and seeds the
+`Admin`/`User` roles. To recreate the database from scratch, stop the API and
+delete `MovieFlix.db` (plus `-wal`/`-shm`); startup recreates it. See
+[Database operations](docs/OPERATIONS.md#4-database-sqlite-vs-postgresql) for
+explicit `dotnet ef database update` steps.
+
 ### 3. Test
 
 ```bash
 dotnet test backend/MovieFlix.sln
 ```
+
+The suite runs in the `Testing` environment against an isolated SQLite
+database with a fake TMDB service; it requires no secrets and makes no external
+network calls. Expected result: **76 passed, 0 failed**.
 
 See [docs/OPERATIONS.md](docs/OPERATIONS.md) for full configuration (Postgres, Docker, env vars, migrations).
 

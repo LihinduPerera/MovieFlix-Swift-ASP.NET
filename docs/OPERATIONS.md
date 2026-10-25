@@ -1,6 +1,6 @@
-﻿# MovieFlix â€” Operations Guide
+﻿# MovieFlix — Operations Guide
 
-How the backend is configured, deployed, observed and backed up. This sits
+How the backend is configured, deployed, observed, and backed up. This sits
 alongside `docs/BUILD_PROGRESS.md` (the build diary) and the top-level
 `README.md` (project overview).
 
@@ -8,6 +8,9 @@ alongside `docs/BUILD_PROGRESS.md` (the build diary) and the top-level
 > are authored to production standards but were **not executed locally** (Docker
 > is not installed on the development machine). Validate them in a container
 > environment before relying on them.
+
+**Runtime:** ASP.NET Core on **.NET 9** (`net9.0`). The API, tests, Docker base
+images, and CI all stay on .NET 9.
 
 ---
 
@@ -17,15 +20,15 @@ ASP.NET Core reads `appsettings.{ENVIRONMENT}.json` on top of
 `appsettings.json`, where `{ENVIRONMENT}` comes from `ASPNETCORE_ENVIRONMENT`
 (defaults to `Development` locally).
 
-| Environment   | File                     | Behaviour                                                                 |
-| ------------- | ------------------------ | ------------------------------------------------------------------------- |
-| `Development` | `appsettings.Development.json` | Swagger UI, detailed EF errors + sensitive data logging, loads **user secrets** |
-| `Testing`     | `appsettings.Testing.json`     | Used only by the integration-test host; quiet logging, relaxed rate limits, self-contained test secrets |
-| `Production`  | â€”                        | No Swagger, no EF diagnostics, secrets must come from the environment     |
+| Environment   | File                          | Behaviour |
+| ------------- | ----------------------------- | --------- |
+| `Development` | `appsettings.Development.json` | Swagger UI at `/swagger`, detailed EF errors + sensitive data logging, loads **user secrets** |
+| `Testing`     | `appsettings.Testing.json`    | Integration-test host only; quiet logging, relaxed rate limits, self-contained test secrets |
+| `Production`  | —                             | No Swagger, no EF diagnostics, secrets must come from the environment |
 
 `appsettings.Testing.json` exists so the test suite never depends on a
-developer's machine secrets or on network access. The test host selects it
-explicitly via `builder.UseEnvironment("Testing")`.
+developer's machine secrets or on network access. The test host selects it via
+`builder.UseEnvironment("Testing")`.
 
 ---
 
@@ -34,17 +37,34 @@ explicitly via `builder.UseEnvironment("Testing")`.
 Secrets are **never** stored in `appsettings.json` (that file holds only
 non-secret defaults). They are supplied per environment:
 
-| Key                        | Local development                  | Production                                   |
-| -------------------------- | ---------------------------------- | -------------------------------------------- |
-| `Jwt:Key`                  | `dotnet user-secrets set`          | `Jwt__Key` env var / secret manager          |
-| `Jwt:Issuer`, `Jwt:Audience` | `appsettings.json` (defaults)    | override only if needed                      |
-| `Tmdb:AccessToken`         | `dotnet user-secrets set`          | `Tmdb__AccessToken` env var / secret manager |
-| `ConnectionStrings:Postgres` | `dotnet user-secrets set`        | `ConnectionStrings__Postgres` env var        |
+| Key | Local development | Production |
+| --- | --- | --- |
+| `Jwt:Key` | `dotnet user-secrets set` | `Jwt__Key` env var / secret manager |
+| `Jwt:Issuer`, `Jwt:Audience` | `appsettings.json` defaults | override only if needed |
+| `Tmdb:AccessToken` | `dotnet user-secrets set` | `Tmdb__AccessToken` env var / secret manager |
+| `ConnectionStrings:Postgres` | `dotnet user-secrets set` | `ConnectionStrings__Postgres` env var |
+
+### Non-secret settings worth knowing
+
+| Key | Default | Notes |
+| --- | --- | --- |
+| `Jwt:AccessTokenMinutes` | `60` | Access-token lifetime |
+| `Jwt:RefreshTokenDays` | `7` | Refresh-token lifetime; tokens rotate on use |
+| `Tmdb:BaseUrl` | `https://api.themoviedb.org/3/` | TMDB API root |
+| `Tmdb:DefaultLanguage` | `en-US` | Fallback when `language` is omitted |
+| `Tmdb:DefaultRegion` | `US` | Fallback when `region` is omitted |
+| `Tmdb:Warmup:Enabled` | `false` | Opt-in startup cache warm-up |
+| `Tmdb:Warmup:WarmSeasons` | `true` | Warm every non-special season (one TMDB call per season) |
+| `Database:Provider` | `Sqlite` | `Sqlite` or `Postgres` |
+| `RateLimiting:GlobalPermitLimit` | `120` | Per 60 s per user/IP |
+| `RateLimiting:AuthPermitLimit` | `10` | Per 60 s per IP on `/api/v1/auth/*` |
+| `ForwardedHeaders:Enabled` | `false` | Honor `X-Forwarded-*` from trusted proxies |
+| `Seed:AdminEmail` / `Seed:AdminPassword` | absent | Optional initial admin account |
 
 ### The double-underscore convention
 
-Configuration providers flatten nested keys with `__`, so **everything in
-`appsettings.json` can be set from the environment** without code changes:
+Configuration providers flatten nested keys with `__`, so everything in
+`appsettings.json` can be set from the environment:
 
 ```bash
 export Jwt__Key="<strong-key>"
@@ -53,14 +73,16 @@ export Database__Provider="Postgres"
 export ConnectionStrings__Postgres="Host=db;Port=5432;Database=movieflix;Username=movieflix;Password=..."
 export Cors__AllowedOrigins__0="https://app.example.com"
 export RateLimiting__AuthPermitLimit="5"
+export ForwardedHeaders__Enabled="true"
+export ForwardedHeaders__KnownProxies__0="10.0.0.10"
 ```
 
 ### Production secret storage options
 
-- **Environment variables** â€” simplest; pair with the secret store of your
+- **Environment variables** — simplest; pair with the secret store of your
   orchestrator (systemd unit, ECS task definition, Kubernetes Secret).
-- **Azure Key Vault / AWS Secrets Manager / HashiCorp Vault** â€” mount the
-  secrets as configuration, e.g. the Azure Key Vault configuration provider:
+- **Azure Key Vault / AWS Secrets Manager / HashiCorp Vault** — mount the
+  secrets as configuration, e.g. the Azure Key Vault provider:
 
   ```bash
   dotnet add package Azure.Extensions.AspNetCore.Configuration.Secrets
@@ -72,15 +94,40 @@ export RateLimiting__AuthPermitLimit="5"
       new DefaultAzureCredential());
   ```
 
-  Then reference the same logical keys (`Jwt--Key`, `Tmdb--AccessToken` â€”
-  Key Vault uses `--` for nesting).
-- **Docker Compose** â€” secrets are read from `.env` (see `.env.example`),
-  which is git-ignored. Compose fails fast at startup if `JWT_KEY` or
+  Key Vault uses `--` for nesting, so `Jwt--Key` maps to `Jwt:Key`.
+- **Docker Compose** — secrets are read from `.env` (see `.env.example`),
+  which is git-ignored. Compose fails fast if `JWT_KEY` or
   `TMDB_ACCESS_TOKEN` is missing.
 
 > **Action item:** the TMDB token that was previously committed must be
 > rotated at <https://www.themoviedb.org/settings/api>. Rotating invalidates
 > the leaked value.
+
+### Optional cache warm-up
+
+Warm-up is disabled by default, so tests and local runs never make surprise
+network calls. Enable it with a small set of titles:
+
+```json
+{
+  "Tmdb": {
+    "Warmup": {
+      "Enabled": true,
+      "WarmSeasons": true,
+      "Items": [
+        { "mediaType": "movie", "tmdbId": 27205 },
+        { "mediaType": "tv", "tmdbId": 1399 }
+      ]
+    }
+  }
+}
+```
+
+Equivalent environment keys:
+`Tmdb__Warmup__Enabled=true`,
+`Tmdb__Warmup__Items__0__MediaType=tv`,
+`Tmdb__Warmup__Items__0__TmdbId=1399`. Set `WarmSeasons=false` for large
+shows. Warm-up failures are logged and never block API availability.
 
 ---
 
@@ -99,7 +146,7 @@ curl http://localhost:8080/health
   and secrets must come from the environment.
 - SQLite data is persisted in the `movieflix-data` named volume mounted at
   `/data`, so the database survives container restarts.
-- The compose file defines a health check that polls `/health`.
+- The compose health check polls `/health` (readiness).
 
 ### Using PostgreSQL instead
 
@@ -118,13 +165,46 @@ The `db` service only starts under the `postgres` profile.
 
 The provider is selectable in code (see `Program.cs`):
 
-| `Database:Provider` | Connection string key               | Default |
-| ------------------- | ----------------------------------- | ------- |
-| `Sqlite`            | `ConnectionStrings:DefaultConnection` | âœ… (development, tests) |
-| `Postgres`          | `ConnectionStrings:Postgres`          | â€”      |
+| `Database:Provider` | Connection string key | Default |
+| --- | --- | --- |
+| `Sqlite` | `ConnectionStrings:DefaultConnection` | ✅ development, tests |
+| `Postgres` | `ConnectionStrings:Postgres` | — |
 
 Setting `Database:Provider=Postgres` without `ConnectionStrings:Postgres`
-throws a clear configuration error at startup rather than failing later.
+throws a clear configuration error at startup.
+
+### Schema history
+
+There is exactly **one** migration set: `InitialMediaSchema` in
+`backend/MovieFlix.Api/Migrations/` (namespace `MovieFlix.Api.Migrations`).
+Old movie-only migrations and the duplicate `Data/Migrations` snapshot were
+deleted. The database stores `MediaItems.MediaType` and `Genres.MediaType` as
+lowercase `movie`/`tv` strings.
+
+On startup `DatabaseSeeder.InitializeAsync` runs `Database.MigrateAsync()`, so
+pending migrations are applied automatically and the `Admin`/`User` roles are
+seeded (plus the optional admin account). For a guaranteed clean database:
+
+```bash
+# Stop the API first, then delete the SQLite database and its sidecars.
+rm -f MovieFlix.db MovieFlix.db-wal MovieFlix.db-shm
+
+# Option A: create the schema explicitly.
+dotnet ef database update \
+  --project backend/MovieFlix.Api/MovieFlix.Api.csproj
+
+# Option B: start the API; startup migration creates the schema.
+dotnet run --project backend/MovieFlix.Api/MovieFlix.Api.csproj
+```
+
+Verify the schema after creation:
+
+```sql
+SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name;
+SELECT MediaType, COUNT(*) FROM MediaItems GROUP BY MediaType;
+```
+
+### PostgreSQL caveat
 
 > **Important:** the committed EF Core migrations were generated against
 > SQLite. Applying them to PostgreSQL is not guaranteed. Before switching a
@@ -133,44 +213,108 @@ throws a clear configuration error at startup rather than failing later.
 > ```bash
 > export Database__Provider=Postgres
 > export ConnectionStrings__Postgres="Host=localhost;Port=5432;Database=movieflix;Username=movieflix;Password=..."
-> dotnet ef migrations add AddPostgresSchema \
+> dotnet ef migrations add InitialPostgresSchema \
 >     --project backend/MovieFlix.Api/MovieFlix.Api.csproj \
 >     --context MovieFlixDbContext \
->     --output-dir Data/Migrations/Postgres
+>     --output-dir Migrations/Postgres
 > ```
 >
-> Keep SQLite and Postgres migrations in **separate contexts/assemblies** â€”
-> EF discovers every migration in an assembly, so mixing both providers in
-> one set will break `MigrateAsync()`.
-
-On startup the app runs `Database.MigrateAsync()`, which applies pending
-migrations automatically.
+> Keep SQLite and Postgres migrations in **separate contexts/assemblies** — EF
+> discovers every migration in an assembly, and mixing both providers in one
+> set breaks `MigrateAsync()`. Do not claim PostgreSQL production support until
+> the separate set has been applied and exercised.
 
 ---
 
 ## 5. Health, logging and traffic protection
 
-- **Health:** `GET /health` returns `200 Healthy` when the database can be
-  reached (EF Core `AddDbContextCheck`). Use it as the container/orchestrator
-  probe.
-- **Logging:** Serilog, configured from the `Serilog` section of
-  `appsettings.json`, writes structured events to the console. Requests are
-  logged by `UseSerilogRequestLogging()`. In the `Testing` environment the
-  minimum level is raised to `Warning` to keep test output clean.
-- **Rate limiting:** a global fixed-window budget per client plus a stricter
-  `auth` policy applied to `/api/v1/Auth/register|login|refresh`. Exceeding
-  the budget returns `429`. Limits are configurable:
+### Health endpoints
 
-  ```bash
-  export RateLimiting__GlobalPermitLimit=120
-  export RateLimiting__AuthPermitLimit=10
-  ```
+| Path | Checks | Use |
+| --- | --- | --- |
+| `/health/live` | None (process liveness) | Kubernetes liveness / fast process probe |
+| `/health/ready` | Registered checks (EF Core database) | Kubernetes readiness |
+| `/health` | Alias for readiness (all registered checks) | Docker/orchestrator default probe |
 
-- **Resilience:** TMDB calls are wrapped in a standard resilience handler
-  (retry with exponential backoff, attempt/total timeouts, circuit breaker).
-  Responses are also output-cached (5 min for search, 1 h for details).
-- **CORS:** allowed browser origins come from `Cors:AllowedOrigins`. Native
-  clients are unaffected.
+Healthy responses are `200`; an unreachable database makes readiness/`/health`
+return `503`.
+
+### Logging
+
+Serilog reads the `Serilog` section of `appsettings.json` and writes
+structured events to the console. Requests are logged by
+`UseSerilogRequestLogging()`. In the `Testing` environment the minimum level is
+raised to `Warning` to keep test output clean.
+
+### Output caching
+
+All policies are in-memory output caching and apply only to public,
+non-user-specific responses:
+
+| Policy | TTL | Applied to |
+| --- | --- | --- |
+| `tmdb-search` | 5 min | `GET /api/v1/search` |
+| `tmdb-trending` | 10 min | `GET /api/v1/media/trending` |
+| `tmdb-feed` | 10 min | popular/top-rated/now-playing/upcoming/on-the-air/airing-today |
+| `tmdb-discover` | 10 min | `GET /api/v1/media/{mediaType}/discover` |
+| `tmdb-details` | 1 h | `GET /api/v1/media/{mediaType}/{tmdbId}` |
+| `tmdb-season` | 6 h | `GET /api/v1/media/tv/{tmdbId}/seasons` |
+| `tmdb-genres` | 24 h | `GET /api/v1/genres/{mediaType}` |
+
+Season **details** (`.../seasons/{seasonNumber}`) are **not** output-cached
+because authenticated responses include per-user episode progress. `/state`,
+ratings, reviews, all `/api/v1/me/*`, auth, and admin routes are also never
+cached. Restarting the API clears the in-memory cache.
+
+### Rate limiting
+
+A global fixed-window budget applies to every request (per authenticated user
+id, otherwise per remote IP), and a stricter `auth` policy applies to every
+`/api/v1/auth/*` action. Exceeding either budget returns `429` Problem Details
+with `Retry-After`:
+
+```bash
+export RateLimiting__GlobalPermitLimit=120
+export RateLimiting__GlobalWindowSeconds=60
+export RateLimiting__AuthPermitLimit=10
+export RateLimiting__AuthWindowSeconds=60
+```
+
+### TMDB resilience and error mapping
+
+TMDB calls use a standard resilience handler: 3 retries with exponential
+backoff and jitter, 5 s attempt timeout, 20 s total timeout, and a circuit
+breaker (50% failure ratio, 5-request minimum throughput, 30 s sampling, 15 s
+break). API mapping:
+
+- TMDB 404 → API **404**
+- TMDB 429 → API **503** with `Retry-After`
+- Other TMDB non-success → API **502**
+- Network failure/timeout/open circuit → API **503**
+
+### CORS and compression
+
+- Allowed browser origins come from `Cors:AllowedOrigins` (empty by default;
+  native clients are unaffected).
+- Brotli/Gzip compression is enabled for `application/json` and
+  `application/problem+json`, including over HTTPS.
+
+### Behind a reverse proxy
+
+If every client appears to share one IP (rate limiting), HTTPS redirects or
+generated URLs use the wrong scheme/host, or logs show the proxy address, the
+forwarded-headers middleware is not active or the proxy is not trusted:
+
+```bash
+export ForwardedHeaders__Enabled=true
+export ForwardedHeaders__KnownProxies__0="10.0.0.10"
+# or a CIDR range:
+export ForwardedHeaders__KnownNetworks__0="10.0.0.0/8"
+```
+
+The middleware honors `X-Forwarded-For` and `X-Forwarded-Proto`. Do **not**
+enable it without restricting known proxies/networks — otherwise clients can
+spoof their source IP and bypass IP-based rate limiting.
 
 ---
 
@@ -210,25 +354,19 @@ Schedule either with cron/a scheduled job, and store backups off-host.
 
 ## 7. Hardening & further work
 
-- **Rotate** the JWT signing key periodically; token lifetime is configured
-  via `Jwt:AccessTokenMinutes` (access) and `Jwt:RefreshTokenDays` (refresh).
-- **HTTPS:** the container terminates HTTP on 8080 â€” put it behind a reverse
-  proxy (nginx/Caddy) or load balancer that terminates TLS.
+- **Rotate** the JWT signing key periodically. Token lifetimes are configured
+  via `Jwt:AccessTokenMinutes` and `Jwt:RefreshTokenDays`.
+- **HTTPS:** the container terminates HTTP on 8080 — put it behind a reverse
+  proxy (nginx/Caddy) or load balancer that terminates TLS, and configure
+  forwarded headers as described above.
 - **CORS:** populate `Cors:AllowedOrigins` before enabling a web front-end.
-- **Postgres migrations** need a dedicated migration set (see Â§4) before a
-  production Postgres deployment.
+- **Database:** back up before migrations; rehearse the fresh-DB path in §4.
+- **Postgres migrations** need a dedicated migration set before production.
 - **Observability beyond logs:** add OpenTelemetry traces/metrics and export
   to a backend of your choice; the Serilog + health-check foundation is
   already in place.
-- **CI:** `.github/workflows/ci.yml` restores, builds and tests on push/PR.
-  Consider adding a container-image build job once the Docker image is
-  validated.
-
-## MovieFlix v2 notes (movies + TV)
-- **Target framework:** .NET 9 (net9.0). Keep SDK/runtime/Docker/CI/Packages compatible with .NET 9.
-- **Migrations:** committed migrations are SQLite-generated (InitialMediaSchema). Before real Postgres deployment, generate and validate a separate Postgres migration set (do not claim Postgres production support until done).
-- **TMDB warmup:** use { mediaType, tmdbId } items in Tmdb:Warmup:Items. Warm details/seasons as configured; avoid warming episodes.
-- **Output caching:** varies by query/route params; authenticated/user-specific responses are not output-cached.
-- **Liveness/Readiness:** GET /health/live (self), GET /health/ready (DB), GET /health alias.
-- **Token rotation:** refresh uses atomic/conditional rotation; reuse revokes the refresh token chain.
-
+- **CI:** `.github/workflows/ci.yml` restores, builds with `-warnaserror`, and
+  tests on push/PR to `dev`/`main` using `9.0.x`. It uses the hermetic
+  `Testing` environment, so no secrets or network TMDB calls are required.
+- **Docker:** build and run the image at least once in CI or locally before
+  relying on the compose topology.
