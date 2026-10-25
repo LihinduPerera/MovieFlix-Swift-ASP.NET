@@ -1,234 +1,483 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using MovieFlix.Api.Configuration;
 using MovieFlix.Api.Data;
 using MovieFlix.Api.DTOs.Collections;
+using MovieFlix.Api.DTOs.Common;
 using MovieFlix.Api.Exceptions;
+using MovieFlix.Api.Mappings;
 using MovieFlix.Api.Models;
 
 namespace MovieFlix.Api.Services
 {
+    /// <summary>
+    /// Collections are user-owned; names are unique per owner ignoring case.
+    /// Cover art is derived from up to four newest posters, never stored.
+    /// </summary>
     public class CollectionService : ICollectionService
     {
-        private readonly MovieFlixDbContext _context;
+        private const int CoverLimit = 4;
 
-        public CollectionService(MovieFlixDbContext context)
+        private readonly MovieFlixDbContext _context;
+        private readonly IMediaCacheService _cacheService;
+        private readonly TimeProvider _timeProvider;
+        private readonly TmdbSettings _settings;
+
+        public CollectionService(
+            MovieFlixDbContext context,
+            IMediaCacheService cacheService,
+            TimeProvider timeProvider,
+            IOptions<TmdbSettings> settings)
         {
             _context = context;
+            _cacheService = cacheService;
+            _timeProvider = timeProvider;
+            _settings = settings.Value;
         }
 
-        public async Task<List<CollectionSummaryResponse>> GetUserCollectionsAsync(
-            string userId)
+        public async Task<PagedResponse<CollectionSummaryResponse>> GetUserCollectionsAsync(
+            string userId,
+            int page,
+            int pageSize,
+            CancellationToken cancellationToken = default)
         {
-            return await _context.Collections
+            page = Math.Max(1, page);
+            pageSize = Math.Clamp(pageSize, 1, 100);
+
+            var query = _context.Collections
                 .AsNoTracking()
-                .Where(c => c.UserId == userId)
-                .OrderByDescending(c => c.CreatedAt)
-                .Select(c => new CollectionSummaryResponse
+                .Where(collection => collection.UserId == userId);
+
+            var totalCount = await query.CountAsync(cancellationToken);
+
+            var collections = await query
+                .OrderByDescending(collection => collection.UpdatedAt)
+                .ThenByDescending(collection => collection.Id)
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .Select(collection => new
                 {
-                    Id = c.Id,
-                    Name = c.Name,
-                    Description = c.Description,
-                    MovieCount = c.Movies.Count,
-                    CreatedAt = c.CreatedAt,
-                    UpdatedAt = c.UpdatedAt
+                    collection.Id,
+                    collection.Name,
+                    collection.Description,
+                    collection.CreatedAt,
+                    collection.UpdatedAt
                 })
-                .ToListAsync();
+                .ToListAsync(cancellationToken);
+
+            var ids = collections.Select(collection => collection.Id).ToList();
+            var counts = await GetCountsAsync(ids, cancellationToken);
+            var covers = await GetCoversAsync(ids, cancellationToken);
+
+            var items = collections
+                .Select(collection => new CollectionSummaryResponse
+                {
+                    Id = collection.Id,
+                    Name = collection.Name,
+                    Description = collection.Description,
+                    ItemCount = counts.GetValueOrDefault(collection.Id),
+                    CoverPosterPaths = covers.GetValueOrDefault(collection.Id) ?? [],
+                    CreatedAt = collection.CreatedAt,
+                    UpdatedAt = collection.UpdatedAt
+                })
+                .ToList();
+
+            return new PagedResponse<CollectionSummaryResponse>
+            {
+                Items = items,
+                Page = page,
+                PageSize = pageSize,
+                TotalCount = totalCount,
+                TotalPages = (int)Math.Ceiling(totalCount / (double)pageSize)
+            };
         }
 
-        public async Task<CollectionDetailResponse?> GetByIdAsync(int collectionId)
+        public async Task<CollectionDetailResponse?> GetByIdAsync(
+            int collectionId,
+            string? userId,
+            CancellationToken cancellationToken = default)
         {
-            return await _context.Collections
+            var collection = await _context.Collections
                 .AsNoTracking()
-                .Where(c => c.Id == collectionId)
-                .Select(c => new CollectionDetailResponse
+                .Include(item => item.User)
+                .FirstOrDefaultAsync(item => item.Id == collectionId, cancellationToken);
+
+            if (collection is null)
+            {
+                return null;
+            }
+
+            var items = await _context.CollectionItems
+                .AsNoTracking()
+                .Where(item => item.CollectionId == collectionId)
+                .OrderByDescending(item => item.AddedAt)
+                .ThenByDescending(item => item.Id)
+                .Select(item => new CollectionItemResponse
                 {
-                    Id = c.Id,
-                    Name = c.Name,
-                    Description = c.Description,
-                    OwnerId = c.UserId,
-                    CreatedAt = c.CreatedAt,
-                    UpdatedAt = c.UpdatedAt,
-                    Movies = c.Movies
-                        .OrderByDescending(cm => cm.AddedAt)
-                        .Select(cm => new CollectionMovieResponse
-                        {
-                            MovieId = cm.MovieId,
-                            TmdbId = cm.Movie.TmdbId,
-                            Title = cm.Movie.Title,
-                            Overview = cm.Movie.Overview,
-                            AddedAt = cm.AddedAt
-                        })
-                        .ToList()
+                    Media = new DTOs.Media.MediaSummaryResponse
+                    {
+                        TmdbId = item.MediaItem.TmdbId,
+                        MediaType = item.MediaItem.MediaType,
+                        Title = item.MediaItem.Title,
+                        OriginalTitle = item.MediaItem.OriginalTitle,
+                        Overview = item.MediaItem.Overview,
+                        PosterPath = item.MediaItem.PosterPath,
+                        BackdropPath = item.MediaItem.BackdropPath,
+                        ReleaseDate = item.MediaItem.ReleaseDate,
+                        VoteAverage = item.MediaItem.VoteAverage,
+                        VoteCount = item.MediaItem.VoteCount,
+                        Popularity = item.MediaItem.Popularity
+                    },
+                    AddedAt = item.AddedAt
                 })
-                .FirstOrDefaultAsync();
+                .ToListAsync(cancellationToken);
+
+            return new CollectionDetailResponse
+            {
+                Id = collection.Id,
+                Name = collection.Name,
+                Description = collection.Description,
+                OwnerDisplayName = collection.User.DisplayName,
+                IsOwner = userId != null && collection.UserId == userId,
+                Items = items,
+                ItemCount = items.Count,
+                CoverPosterPaths = items
+                    .Where(item => item.Media.PosterPath is not null)
+                    .Take(CoverLimit)
+                    .Select(item => item.Media.PosterPath!)
+                    .ToList(),
+                CreatedAt = collection.CreatedAt,
+                UpdatedAt = collection.UpdatedAt
+            };
         }
 
         public async Task<CollectionSummaryResponse> CreateAsync(
-            string userId, string name, string description)
+            string userId,
+            CreateCollectionRequest request,
+            CancellationToken cancellationToken = default)
         {
+            var name = NormalizeName(request.Name);
+            var normalized = name.ToUpperInvariant();
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+
+            await EnsureNameAvailableAsync(
+                userId,
+                normalized,
+                excludedId: null,
+                cancellationToken);
+
             var collection = new Collection
             {
                 UserId = userId,
-                Name = name.Trim(),
-                Description = description?.Trim() ?? string.Empty,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                Name = name,
+                NormalizedName = normalized,
+                Description = request.Description?.Trim() ?? string.Empty,
+                CreatedAt = now,
+                UpdatedAt = now
             };
 
             _context.Collections.Add(collection);
-            await _context.SaveChangesAsync();
 
-            return new CollectionSummaryResponse
+            try
             {
-                Id = collection.Id,
-                Name = collection.Name,
-                Description = collection.Description,
-                MovieCount = 0,
-                CreatedAt = collection.CreatedAt,
-                UpdatedAt = collection.UpdatedAt
-            };
-        }
-
-        public async Task<CollectionSummaryResponse?> UpdateAsync(
-            string userId, int collectionId, string name, string description)
-        {
-            var collection = await GetOwnedCollectionAsync(
-                userId, collectionId, requireOwnership: true);
-
-            if (collection is null)
-            {
-                return null;
+                await _context.SaveChangesAsync(cancellationToken);
             }
-
-            collection.Name = name.Trim();
-            collection.Description = description?.Trim() ?? string.Empty;
-            collection.UpdatedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-
-            var movieCount = await _context.CollectionMovies
-                .CountAsync(cm => cm.CollectionId == collection.Id);
-
-            return new CollectionSummaryResponse
-            {
-                Id = collection.Id,
-                Name = collection.Name,
-                Description = collection.Description,
-                MovieCount = movieCount,
-                CreatedAt = collection.CreatedAt,
-                UpdatedAt = collection.UpdatedAt
-            };
-        }
-
-        public async Task<bool> DeleteAsync(string userId, int collectionId)
-        {
-            var collection = await GetOwnedCollectionAsync(
-                userId, collectionId, requireOwnership: true);
-
-            if (collection is null)
-            {
-                return false;
-            }
-
-            _context.Collections.Remove(collection);
-            await _context.SaveChangesAsync();
-            return true;
-        }
-
-        public async Task<CollectionDetailResponse?> AddMovieAsync(
-            string userId, int collectionId, int movieId)
-        {
-            var collection = await GetOwnedCollectionAsync(
-                userId, collectionId, requireOwnership: true);
-
-            if (collection is null)
-            {
-                return null;
-            }
-
-            var movieExists = await _context.Movies
-                .AsNoTracking()
-                .AnyAsync(m => m.Id == movieId);
-
-            if (!movieExists)
-            {
-                return null;
-            }
-
-            var alreadyAdded = await _context.CollectionMovies
-                .AsNoTracking()
-                .AnyAsync(cm =>
-                    cm.CollectionId == collectionId && cm.MovieId == movieId);
-
-            if (alreadyAdded)
+            catch (DbUpdateException)
             {
                 throw new DuplicateResourceException(
-                    $"Movie {movieId} is already in collection {collectionId}.");
+                    "A collection with that name already exists.");
             }
 
-            _context.CollectionMovies.Add(new CollectionMovie
-            {
-                CollectionId = collectionId,
-                MovieId = movieId,
-                AddedAt = DateTime.UtcNow
-            });
-
-            collection.UpdatedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-
-            return await GetByIdAsync(collectionId);
+            return await GetSummaryAsync(collection.Id, cancellationToken)
+                ?? throw new InvalidOperationException("Collection could not be saved.");
         }
 
-        public async Task<bool> RemoveMovieAsync(
-            string userId, int collectionId, int movieId)
+        public async Task<CollectionSummaryResponse> UpdateAsync(
+            string userId,
+            int collectionId,
+            UpdateCollectionRequest request,
+            CancellationToken cancellationToken = default)
         {
-            var collection = await GetOwnedCollectionAsync(
-                userId, collectionId, requireOwnership: true);
+            var collection = await GetOwnedAsync(
+                userId,
+                collectionId,
+                includeItems: false,
+                cancellationToken);
 
-            if (collection is null)
+            var name = NormalizeName(request.Name);
+            var normalized = name.ToUpperInvariant();
+
+            await EnsureNameAvailableAsync(
+                userId,
+                normalized,
+                excludedId: collection.Id,
+                cancellationToken);
+
+            collection.Name = name;
+            collection.NormalizedName = normalized;
+            collection.Description = request.Description?.Trim() ?? string.Empty;
+            collection.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
+
+            try
             {
-                return false;
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                throw new DuplicateResourceException(
+                    "A collection with that name already exists.");
             }
 
-            var link = await _context.CollectionMovies
-                .FirstOrDefaultAsync(cm =>
-                    cm.CollectionId == collectionId && cm.MovieId == movieId);
-
-            if (link is null)
-            {
-                return false;
-            }
-
-            _context.CollectionMovies.Remove(link);
-            collection.UpdatedAt = DateTime.UtcNow;
-
-            await _context.SaveChangesAsync();
-            return true;
+            return await GetSummaryAsync(collection.Id, cancellationToken)
+                ?? throw new InvalidOperationException("Collection could not be saved.");
         }
 
-        /// <summary>
-        /// Loads a collection, enforcing ownership when requested. Throws
-        /// <see cref="ForbiddenAccessException"/> if the collection exists but
-        /// belongs to another user.
-        /// </summary>
-        private async Task<Collection?> GetOwnedCollectionAsync(
-            string userId, int collectionId, bool requireOwnership)
+        public async Task DeleteAsync(
+            string userId,
+            int collectionId,
+            CancellationToken cancellationToken = default)
         {
-            var collection = await _context.Collections
-                .FirstOrDefaultAsync(c => c.Id == collectionId);
+            var collection = await GetOwnedAsync(
+                userId,
+                collectionId,
+                includeItems: false,
+                cancellationToken);
 
-            if (collection is null)
+            _context.Collections.Remove(collection);
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        public async Task<CollectionDetailResponse> AddItemAsync(
+            string userId,
+            int collectionId,
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken = default)
+        {
+            var collection = await GetOwnedAsync(
+                userId,
+                collectionId,
+                includeItems: false,
+                cancellationToken);
+
+            var media = await _cacheService.GetOrCreateAsync(
+                mediaType,
+                tmdbId,
+                _settings.DefaultLanguage,
+                cancellationToken);
+
+            var exists = await _context.CollectionItems
+                .AnyAsync(item => item.CollectionId == collectionId
+                    && item.MediaItemId == media.Id,
+                    cancellationToken);
+
+            if (!exists)
             {
-                return null;
+                var now = _timeProvider.GetUtcNow().UtcDateTime;
+
+                _context.CollectionItems.Add(new CollectionItem
+                {
+                    CollectionId = collectionId,
+                    MediaItemId = media.Id,
+                    AddedAt = now
+                });
+
+                collection.UpdatedAt = now;
+
+                try
+                {
+                    await _context.SaveChangesAsync(cancellationToken);
+                }
+                catch (DbUpdateException)
+                {
+                    _context.ChangeTracker.Clear();
+                }
             }
 
-            if (requireOwnership && collection.UserId != userId)
+            return await GetByIdAsync(collectionId, userId, cancellationToken)
+                ?? throw new InvalidOperationException("Collection could not be loaded.");
+        }
+
+        public async Task RemoveItemAsync(
+            string userId,
+            int collectionId,
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken = default)
+        {
+            var collection = await GetOwnedAsync(
+                userId,
+                collectionId,
+                includeItems: false,
+                cancellationToken);
+
+            var item = await _context.CollectionItems
+                .FirstOrDefaultAsync(entry => entry.CollectionId == collectionId
+                    && entry.MediaItem.MediaType == mediaType
+                    && entry.MediaItem.TmdbId == tmdbId,
+                    cancellationToken);
+
+            if (item is null)
             {
-                throw new ForbiddenAccessException(
-                    "You can only modify your own collections.");
+                return;
+            }
+
+            _context.CollectionItems.Remove(item);
+            collection.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
+            await _context.SaveChangesAsync(cancellationToken);
+        }
+
+        private async Task<Collection> GetOwnedAsync(
+            string userId,
+            int collectionId,
+            bool includeItems,
+            CancellationToken cancellationToken)
+        {
+            IQueryable<Collection> query = _context.Collections;
+
+            if (includeItems)
+            {
+                query = query.Include(collection => collection.Items);
+            }
+
+            var collection = await query.FirstOrDefaultAsync(
+                item => item.Id == collectionId,
+                cancellationToken)
+                ?? throw new ResourceNotFoundException("Collection not found.");
+
+            if (collection.UserId != userId)
+            {
+                throw new ForbiddenAccessException();
             }
 
             return collection;
+        }
+
+        private async Task<CollectionSummaryResponse?> GetSummaryAsync(
+            int collectionId,
+            CancellationToken cancellationToken)
+        {
+            var collection = await _context.Collections
+                .AsNoTracking()
+                .Where(item => item.Id == collectionId)
+                .Select(item => new
+                {
+                    item.Id,
+                    item.Name,
+                    item.Description,
+                    item.CreatedAt,
+                    item.UpdatedAt
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+
+            if (collection is null)
+            {
+                return null;
+            }
+
+            var counts = await GetCountsAsync([collection.Id], cancellationToken);
+            var covers = await GetCoversAsync([collection.Id], cancellationToken);
+
+            return new CollectionSummaryResponse
+            {
+                Id = collection.Id,
+                Name = collection.Name,
+                Description = collection.Description,
+                ItemCount = counts.GetValueOrDefault(collection.Id),
+                CoverPosterPaths = covers.GetValueOrDefault(collection.Id) ?? [],
+                CreatedAt = collection.CreatedAt,
+                UpdatedAt = collection.UpdatedAt
+            };
+        }
+
+        private async Task<Dictionary<int, int>> GetCountsAsync(
+            IReadOnlyCollection<int> collectionIds,
+            CancellationToken cancellationToken)
+        {
+            if (collectionIds.Count == 0)
+            {
+                return [];
+            }
+
+            return await _context.CollectionItems
+                .AsNoTracking()
+                .Where(item => collectionIds.Contains(item.CollectionId))
+                .GroupBy(item => item.CollectionId)
+                .Select(group => new
+                {
+                    CollectionId = group.Key,
+                    Count = group.Count()
+                })
+                .ToDictionaryAsync(
+                    item => item.CollectionId,
+                    item => item.Count,
+                    cancellationToken);
+        }
+
+        private async Task<Dictionary<int, List<string>>> GetCoversAsync(
+            IReadOnlyCollection<int> collectionIds,
+            CancellationToken cancellationToken)
+        {
+            if (collectionIds.Count == 0)
+            {
+                return [];
+            }
+
+            var rows = await _context.CollectionItems
+                .AsNoTracking()
+                .Where(item => collectionIds.Contains(item.CollectionId)
+                    && item.MediaItem.PosterPath != null)
+                .OrderByDescending(item => item.AddedAt)
+                .ThenByDescending(item => item.Id)
+                .Select(item => new
+                {
+                    item.CollectionId,
+                    item.MediaItem.PosterPath
+                })
+                .ToListAsync(cancellationToken);
+
+            return rows
+                .GroupBy(row => row.CollectionId)
+                .ToDictionary(
+                    group => group.Key,
+                    group => group
+                        .Select(row => row.PosterPath!)
+                        .Take(CoverLimit)
+                        .ToList());
+        }
+
+        private async Task EnsureNameAvailableAsync(
+            string userId,
+            string normalizedName,
+            int? excludedId,
+            CancellationToken cancellationToken)
+        {
+            var exists = await _context.Collections
+                .AsNoTracking()
+                .AnyAsync(collection => collection.UserId == userId
+                    && collection.NormalizedName == normalizedName
+                    && (excludedId == null || collection.Id != excludedId),
+                    cancellationToken);
+
+            if (exists)
+            {
+                throw new DuplicateResourceException(
+                    "A collection with that name already exists.");
+            }
+        }
+
+        private static string NormalizeName(string name)
+        {
+            var trimmed = name.Trim();
+
+            if (trimmed.Length == 0)
+            {
+                throw new RequestValidationException(
+                    "name",
+                    "Collection name is required.");
+            }
+
+            return trimmed;
         }
     }
 }

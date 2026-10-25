@@ -1,146 +1,232 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
+using MovieFlix.Api.Configuration;
 using MovieFlix.Api.Data;
+using MovieFlix.Api.DTOs.Media;
 using MovieFlix.Api.DTOs.Ratings;
+using MovieFlix.Api.Exceptions;
 using MovieFlix.Api.Models;
 
 namespace MovieFlix.Api.Services
 {
+    /// <summary>1-5 star ratings plus community aggregates.</summary>
     public class RatingService : IRatingService
     {
         private readonly MovieFlixDbContext _context;
+        private readonly IMediaCacheService _cacheService;
+        private readonly TimeProvider _timeProvider;
+        private readonly TmdbSettings _settings;
 
-        public RatingService(MovieFlixDbContext context)
+        public RatingService(
+            MovieFlixDbContext context,
+            IMediaCacheService cacheService,
+            TimeProvider timeProvider,
+            IOptions<TmdbSettings> settings)
         {
             _context = context;
+            _cacheService = cacheService;
+            _timeProvider = timeProvider;
+            _settings = settings.Value;
         }
 
-        public async Task<UserRatingResponse?> RateAsync(
-            string userId, int movieId, int rating)
+        public Task<MediaRatingResponse?> GetMyRatingAsync(
+            string userId,
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken = default)
         {
-            var userExists = await _context.Users
+            return _context.MediaRatings
                 .AsNoTracking()
-                .AnyAsync(u => u.Id == userId);
+                .Where(rating => rating.UserId == userId
+                    && rating.MediaItem.MediaType == mediaType
+                    && rating.MediaItem.TmdbId == tmdbId)
+                .Select(rating => new MediaRatingResponse
+                {
+                    Media = new MediaSummaryResponse
+                    {
+                        TmdbId = rating.MediaItem.TmdbId,
+                        MediaType = rating.MediaItem.MediaType,
+                        Title = rating.MediaItem.Title,
+                        OriginalTitle = rating.MediaItem.OriginalTitle,
+                        Overview = rating.MediaItem.Overview,
+                        PosterPath = rating.MediaItem.PosterPath,
+                        BackdropPath = rating.MediaItem.BackdropPath,
+                        ReleaseDate = rating.MediaItem.ReleaseDate,
+                        VoteAverage = rating.MediaItem.VoteAverage,
+                        VoteCount = rating.MediaItem.VoteCount,
+                        Popularity = rating.MediaItem.Popularity
+                    },
+                    Rating = rating.Rating,
+                    RatedAt = rating.UpdatedAt
+                })
+                .FirstOrDefaultAsync(cancellationToken);
+        }
 
-            var movie = await _context.Movies
-                .AsNoTracking()
-                .FirstOrDefaultAsync(m => m.Id == movieId);
-
-            if (!userExists || movie is null)
+        public async Task<MediaRatingResponse> RateAsync(
+            string userId,
+            MediaType mediaType,
+            int tmdbId,
+            int rating,
+            CancellationToken cancellationToken = default)
+        {
+            if (rating is < 1 or > 5)
             {
-                return null;
+                throw new RequestValidationException(
+                    "rating",
+                    "Rating must be between 1 and 5.");
             }
 
-            var existing = await _context.MovieRatings
-                .FirstOrDefaultAsync(r =>
-                    r.UserId == userId && r.MovieId == movieId);
+            var media = await _cacheService.GetOrCreateAsync(
+                mediaType,
+                tmdbId,
+                _settings.DefaultLanguage,
+                cancellationToken);
 
-            if (existing is null)
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+
+            var entity = await _context.MediaRatings
+                .FirstOrDefaultAsync(item => item.UserId == userId
+                    && item.MediaItemId == media.Id,
+                    cancellationToken);
+
+            if (entity is null)
             {
-                existing = new MovieRating
+                entity = new MediaRating
                 {
                     UserId = userId,
-                    MovieId = movieId,
+                    MediaItemId = media.Id,
                     Rating = rating,
-                    CreatedAt = DateTime.UtcNow,
-                    UpdatedAt = DateTime.UtcNow
+                    CreatedAt = now,
+                    UpdatedAt = now
                 };
-                _context.MovieRatings.Add(existing);
+
+                _context.MediaRatings.Add(entity);
             }
             else
             {
-                existing.Rating = rating;
-                existing.UpdatedAt = DateTime.UtcNow;
+                entity.Rating = rating;
+                entity.UpdatedAt = now;
             }
 
-            await _context.SaveChangesAsync();
-
-            return new UserRatingResponse
+            try
             {
-                MovieId = movie.Id,
-                TmdbId = movie.TmdbId,
-                Title = movie.Title,
-                Rating = existing.Rating,
-                RatedAt = existing.UpdatedAt
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                // Concurrent first rating: return the winner.
+                _context.ChangeTracker.Clear();
+
+                var existing = await GetMyRatingAsync(
+                    userId,
+                    mediaType,
+                    tmdbId,
+                    cancellationToken);
+
+                return existing
+                    ?? throw new InvalidOperationException("Rating could not be saved.");
+            }
+
+            return new MediaRatingResponse
+            {
+                Media = new MediaSummaryResponse
+                {
+                    TmdbId = media.TmdbId,
+                    MediaType = media.MediaType,
+                    Title = media.Title,
+                    OriginalTitle = media.OriginalTitle,
+                    Overview = media.Overview,
+                    PosterPath = media.PosterPath,
+                    BackdropPath = media.BackdropPath,
+                    ReleaseDate = media.ReleaseDate,
+                    VoteAverage = media.VoteAverage,
+                    VoteCount = media.VoteCount,
+                    Popularity = media.Popularity
+                },
+                Rating = entity.Rating,
+                RatedAt = entity.UpdatedAt
             };
         }
 
-        public async Task<UserRatingResponse?> GetMyRatingAsync(
-            string userId, int movieId)
+        public async Task RemoveAsync(
+            string userId,
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken = default)
         {
-            var result = await _context.MovieRatings
-                .AsNoTracking()
-                .Where(r => r.UserId == userId && r.MovieId == movieId)
-                .Select(r => new UserRatingResponse
-                {
-                    MovieId = r.MovieId,
-                    TmdbId = r.Movie.TmdbId,
-                    Title = r.Movie.Title,
-                    Rating = r.Rating,
-                    RatedAt = r.UpdatedAt
-                })
-                .FirstOrDefaultAsync();
-
-            return result;
-        }
-
-        public async Task<bool> RemoveAsync(string userId, int movieId)
-        {
-            var rating = await _context.MovieRatings
-                .FirstOrDefaultAsync(r =>
-                    r.UserId == userId && r.MovieId == movieId);
+            var rating = await _context.MediaRatings
+                .FirstOrDefaultAsync(item => item.UserId == userId
+                    && item.MediaItem.MediaType == mediaType
+                    && item.MediaItem.TmdbId == tmdbId,
+                    cancellationToken);
 
             if (rating is null)
             {
-                return false;
+                return;
             }
 
-            _context.MovieRatings.Remove(rating);
-            await _context.SaveChangesAsync();
-            return true;
+            _context.MediaRatings.Remove(rating);
+            await _context.SaveChangesAsync(cancellationToken);
         }
 
-        public async Task<CommunityRatingResponse?> GetCommunityRatingAsync(
-            string? userId, int movieId)
+        public async Task<CommunityRatingResponse?> GetCommunityAsync(
+            MediaType mediaType,
+            int tmdbId,
+            string? userId,
+            CancellationToken cancellationToken = default)
         {
-            var movie = await _context.Movies
+            var media = await _context.MediaItems
                 .AsNoTracking()
-                .FirstOrDefaultAsync(m => m.Id == movieId);
+                .FirstOrDefaultAsync(
+                    item => item.MediaType == mediaType && item.TmdbId == tmdbId,
+                    cancellationToken);
 
-            if (movie is null)
+            if (media is null)
             {
                 return null;
             }
 
-            // Aggregate in the database: average + count in a single pass.
-            var stats = await _context.MovieRatings
-                .Where(r => r.MovieId == movieId)
-                .GroupBy(r => r.MovieId)
-                .Select(g => new
-                {
-                    Average = Math.Round(g.Average(r => r.Rating), 2),
-                    Count = g.Count()
-                })
-                .FirstOrDefaultAsync();
+            var query = _context.MediaRatings
+                .AsNoTracking()
+                .Where(rating => rating.MediaItemId == media.Id);
 
-            var average = stats?.Average ?? 0.0;
-            var count = stats?.Count ?? 0;
+            var ratingCount = await query.CountAsync(cancellationToken);
+            var average = ratingCount == 0
+                ? 0
+                : await query.AverageAsync(
+                    rating => (double)rating.Rating,
+                    cancellationToken);
 
             int? userRating = null;
-            if (!string.IsNullOrEmpty(userId))
+
+            if (!string.IsNullOrWhiteSpace(userId))
             {
-                userRating = await _context.MovieRatings
+                userRating = await _context.MediaRatings
                     .AsNoTracking()
-                    .Where(r => r.UserId == userId && r.MovieId == movieId)
-                    .Select(r => (int?)r.Rating)
-                    .FirstOrDefaultAsync();
+                    .Where(rating => rating.UserId == userId
+                        && rating.MediaItemId == media.Id)
+                    .Select(rating => (int?)rating.Rating)
+                    .FirstOrDefaultAsync(cancellationToken);
             }
 
             return new CommunityRatingResponse
             {
-                TmdbId = movie.TmdbId,
-                Title = movie.Title,
-                AverageRating = average,
-                RatingCount = count,
+                Media = new MediaSummaryResponse
+                {
+                    TmdbId = media.TmdbId,
+                    MediaType = media.MediaType,
+                    Title = media.Title,
+                    OriginalTitle = media.OriginalTitle,
+                    Overview = media.Overview,
+                    PosterPath = media.PosterPath,
+                    BackdropPath = media.BackdropPath,
+                    ReleaseDate = media.ReleaseDate,
+                    VoteAverage = media.VoteAverage,
+                    VoteCount = media.VoteCount,
+                    Popularity = media.Popularity
+                },
+                AverageRating = Math.Round(average, 2),
+                RatingCount = ratingCount,
                 UserRating = userRating
             };
         }

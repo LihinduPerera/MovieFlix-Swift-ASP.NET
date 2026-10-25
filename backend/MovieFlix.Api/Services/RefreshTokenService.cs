@@ -7,42 +7,49 @@ using MovieFlix.Api.Models;
 
 namespace MovieFlix.Api.Services
 {
+    /// <summary>
+    /// Hashed refresh-token storage with atomic rotation. The conditional
+    /// ExecuteUpdate guarantees that two concurrent refresh requests cannot
+    /// both consume the same token.
+    /// </summary>
     public class RefreshTokenService : IRefreshTokenService
     {
         private readonly MovieFlixDbContext _context;
-        private readonly JwtSettings _jwtSettings;
+        private readonly JwtSettings _settings;
+        private readonly TimeProvider _timeProvider;
 
         public RefreshTokenService(
             MovieFlixDbContext context,
-            IOptions<JwtSettings> jwtOptions)
+            IOptions<JwtSettings> options,
+            TimeProvider timeProvider)
         {
             _context = context;
-            _jwtSettings = jwtOptions.Value;
+            _settings = options.Value;
+            _timeProvider = timeProvider;
         }
 
-        public async Task<string> IssueAsync(
+        public async Task<IssuedRefreshToken> IssueAsync(
             string userId,
             CancellationToken cancellationToken = default)
         {
             var rawToken = CreateSecureToken();
-            var tokenHash = HashToken(rawToken);
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            var expiresAt = now.AddDays(_settings.RefreshTokenDays);
 
-            var entity = new RefreshToken
+            _context.RefreshTokens.Add(new RefreshToken
             {
                 UserId = userId,
-                TokenHash = tokenHash,
-                CreatedAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenDays)
-            };
-
-            _context.RefreshTokens.Add(entity);
+                TokenHash = HashToken(rawToken),
+                CreatedAt = now,
+                ExpiresAt = expiresAt
+            });
 
             await _context.SaveChangesAsync(cancellationToken);
 
-            return rawToken;
+            return new IssuedRefreshToken(rawToken, expiresAt);
         }
 
-        public async Task<string?> ValidateAsync(
+        public async Task<RotatedRefreshToken?> RotateAsync(
             string token,
             CancellationToken cancellationToken = default)
         {
@@ -52,92 +59,92 @@ namespace MovieFlix.Api.Services
             }
 
             var tokenHash = HashToken(token);
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+
+            await using var transaction = await _context.Database
+                .BeginTransactionAsync(cancellationToken);
 
             var entity = await _context.RefreshTokens
-                .AsNoTracking()
                 .FirstOrDefaultAsync(
-                    t => t.TokenHash == tokenHash,
+                    item => item.TokenHash == tokenHash,
                     cancellationToken);
 
-            if (entity is null || !entity.IsActive)
+            if (entity is null)
             {
+                await transaction.RollbackAsync(cancellationToken);
                 return null;
             }
 
-            return entity.UserId;
-        }
-
-        public async Task<string> RotateAsync(
-            string token,
-            CancellationToken cancellationToken = default)
-        {
-            var tokenHash = HashToken(token);
-
-            var entity = await _context.RefreshTokens
-                .FirstOrDefaultAsync(
-                    t => t.TokenHash == tokenHash,
-                    cancellationToken);
-
-            // Reuse of an already-rotated token is suspicious: revoke the whole
-            // chain for that user to limit damage from a stolen token.
-            if (entity is null || entity.RevokedAt is not null)
+            if (entity.RevokedAt is not null)
             {
-                if (entity is not null)
-                {
-                    await RevokeAllAsync(entity.UserId, cancellationToken);
-                }
-
-                throw new InvalidOperationException("Refresh token is invalid or already used.");
+                // Reuse of a rotated/revoked token: burn the whole chain.
+                await RevokeAllInternalAsync(entity.UserId, now, cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return null;
             }
 
-            if (entity.IsExpired)
+            if (entity.ExpiresAt <= now)
             {
-                throw new InvalidOperationException("Refresh token has expired.");
+                await transaction.RollbackAsync(cancellationToken);
+                return null;
             }
 
             var newRawToken = CreateSecureToken();
             var newTokenHash = HashToken(newRawToken);
+            var expiresAt = now.AddDays(_settings.RefreshTokenDays);
 
-            entity.RevokedAt = DateTime.UtcNow;
-            entity.ReplacedByTokenHash = newTokenHash;
+            var affected = await _context.RefreshTokens
+                .Where(item => item.Id == entity.Id && item.RevokedAt == null)
+                .ExecuteUpdateAsync(
+                    setters => setters
+                        .SetProperty(item => item.RevokedAt, now)
+                        .SetProperty(item => item.ReplacedByTokenHash, newTokenHash),
+                    cancellationToken);
+
+            if (affected == 0)
+            {
+                // Another request won the race. Treat it as reuse.
+                await RevokeAllInternalAsync(entity.UserId, now, cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+                return null;
+            }
 
             _context.RefreshTokens.Add(new RefreshToken
             {
                 UserId = entity.UserId,
                 TokenHash = newTokenHash,
-                CreatedAt = DateTime.UtcNow,
-                ExpiresAt = DateTime.UtcNow.AddDays(_jwtSettings.RefreshTokenDays)
+                CreatedAt = now,
+                ExpiresAt = expiresAt
             });
 
             await _context.SaveChangesAsync(cancellationToken);
+            await transaction.CommitAsync(cancellationToken);
 
-            return newRawToken;
+            return new RotatedRefreshToken(entity.UserId, newRawToken, expiresAt);
         }
 
         public async Task RevokeAllAsync(
             string userId,
             CancellationToken cancellationToken = default)
         {
-            var activeTokens = await _context.RefreshTokens
-                .Where(t => t.UserId == userId && t.RevokedAt == null)
-                .ToListAsync(cancellationToken);
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+            await RevokeAllInternalAsync(userId, now, cancellationToken);
+        }
 
-            if (activeTokens.Count == 0)
-            {
-                return;
-            }
-
-            foreach (var token in activeTokens)
-            {
-                token.RevokedAt = DateTime.UtcNow;
-            }
-
-            await _context.SaveChangesAsync(cancellationToken);
+        private Task<int> RevokeAllInternalAsync(
+            string userId,
+            DateTime now,
+            CancellationToken cancellationToken)
+        {
+            return _context.RefreshTokens
+                .Where(item => item.UserId == userId && item.RevokedAt == null)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(item => item.RevokedAt, now),
+                    cancellationToken);
         }
 
         private static string CreateSecureToken()
         {
-            // 64 random bytes => ~86-char Base64Url string (~512 bits of entropy).
             var bytes = RandomNumberGenerator.GetBytes(64);
             return Convert.ToBase64String(bytes)
                 .TrimEnd('=')
@@ -147,7 +154,9 @@ namespace MovieFlix.Api.Services
 
         private static string HashToken(string token)
         {
-            var hash = SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(token));
+            var hash = SHA256.HashData(
+                System.Text.Encoding.UTF8.GetBytes(token));
+
             return Convert.ToHexString(hash);
         }
     }

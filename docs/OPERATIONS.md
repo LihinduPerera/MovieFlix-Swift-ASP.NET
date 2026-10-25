@@ -1,4 +1,4 @@
-# MovieFlix — Operations Guide
+﻿# MovieFlix â€” Operations Guide
 
 How the backend is configured, deployed, observed and backed up. This sits
 alongside `docs/BUILD_PROGRESS.md` (the build diary) and the top-level
@@ -21,7 +21,7 @@ ASP.NET Core reads `appsettings.{ENVIRONMENT}.json` on top of
 | ------------- | ------------------------ | ------------------------------------------------------------------------- |
 | `Development` | `appsettings.Development.json` | Swagger UI, detailed EF errors + sensitive data logging, loads **user secrets** |
 | `Testing`     | `appsettings.Testing.json`     | Used only by the integration-test host; quiet logging, relaxed rate limits, self-contained test secrets |
-| `Production`  | —                        | No Swagger, no EF diagnostics, secrets must come from the environment     |
+| `Production`  | â€”                        | No Swagger, no EF diagnostics, secrets must come from the environment     |
 
 `appsettings.Testing.json` exists so the test suite never depends on a
 developer's machine secrets or on network access. The test host selects it
@@ -57,9 +57,9 @@ export RateLimiting__AuthPermitLimit="5"
 
 ### Production secret storage options
 
-- **Environment variables** — simplest; pair with the secret store of your
+- **Environment variables** â€” simplest; pair with the secret store of your
   orchestrator (systemd unit, ECS task definition, Kubernetes Secret).
-- **Azure Key Vault / AWS Secrets Manager / HashiCorp Vault** — mount the
+- **Azure Key Vault / AWS Secrets Manager / HashiCorp Vault** â€” mount the
   secrets as configuration, e.g. the Azure Key Vault configuration provider:
 
   ```bash
@@ -72,9 +72,9 @@ export RateLimiting__AuthPermitLimit="5"
       new DefaultAzureCredential());
   ```
 
-  Then reference the same logical keys (`Jwt--Key`, `Tmdb--AccessToken` —
+  Then reference the same logical keys (`Jwt--Key`, `Tmdb--AccessToken` â€”
   Key Vault uses `--` for nesting).
-- **Docker Compose** — secrets are read from `.env` (see `.env.example`),
+- **Docker Compose** â€” secrets are read from `.env` (see `.env.example`),
   which is git-ignored. Compose fails fast at startup if `JWT_KEY` or
   `TMDB_ACCESS_TOKEN` is missing.
 
@@ -120,8 +120,8 @@ The provider is selectable in code (see `Program.cs`):
 
 | `Database:Provider` | Connection string key               | Default |
 | ------------------- | ----------------------------------- | ------- |
-| `Sqlite`            | `ConnectionStrings:DefaultConnection` | ✅ (development, tests) |
-| `Postgres`          | `ConnectionStrings:Postgres`          | —      |
+| `Sqlite`            | `ConnectionStrings:DefaultConnection` | âœ… (development, tests) |
+| `Postgres`          | `ConnectionStrings:Postgres`          | â€”      |
 
 Setting `Database:Provider=Postgres` without `ConnectionStrings:Postgres`
 throws a clear configuration error at startup rather than failing later.
@@ -139,7 +139,7 @@ throws a clear configuration error at startup rather than failing later.
 >     --output-dir Data/Migrations/Postgres
 > ```
 >
-> Keep SQLite and Postgres migrations in **separate contexts/assemblies** —
+> Keep SQLite and Postgres migrations in **separate contexts/assemblies** â€”
 > EF discovers every migration in an assembly, so mixing both providers in
 > one set will break `MigrateAsync()`.
 
@@ -212,10 +212,10 @@ Schedule either with cron/a scheduled job, and store backups off-host.
 
 - **Rotate** the JWT signing key periodically; token lifetime is configured
   via `Jwt:AccessTokenMinutes` (access) and `Jwt:RefreshTokenDays` (refresh).
-- **HTTPS:** the container terminates HTTP on 8080 — put it behind a reverse
+- **HTTPS:** the container terminates HTTP on 8080 â€” put it behind a reverse
   proxy (nginx/Caddy) or load balancer that terminates TLS.
 - **CORS:** populate `Cors:AllowedOrigins` before enabling a web front-end.
-- **Postgres migrations** need a dedicated migration set (see §4) before a
+- **Postgres migrations** need a dedicated migration set (see Â§4) before a
   production Postgres deployment.
 - **Observability beyond logs:** add OpenTelemetry traces/metrics and export
   to a backend of your choice; the Serilog + health-check foundation is
@@ -223,3 +223,12 @@ Schedule either with cron/a scheduled job, and store backups off-host.
 - **CI:** `.github/workflows/ci.yml` restores, builds and tests on push/PR.
   Consider adding a container-image build job once the Docker image is
   validated.
+
+## MovieFlix v2 notes (movies + TV)
+- **Target framework:** .NET 9 (net9.0). Keep SDK/runtime/Docker/CI/Packages compatible with .NET 9.
+- **Migrations:** committed migrations are SQLite-generated (InitialMediaSchema). Before real Postgres deployment, generate and validate a separate Postgres migration set (do not claim Postgres production support until done).
+- **TMDB warmup:** use { mediaType, tmdbId } items in Tmdb:Warmup:Items. Warm details/seasons as configured; avoid warming episodes.
+- **Output caching:** varies by query/route params; authenticated/user-specific responses are not output-cached.
+- **Liveness/Readiness:** GET /health/live (self), GET /health/ready (DB), GET /health alias.
+- **Token rotation:** refresh uses atomic/conditional rotation; reuse revokes the refresh token chain.
+

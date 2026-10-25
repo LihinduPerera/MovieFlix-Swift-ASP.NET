@@ -1,16 +1,29 @@
-using MovieFlix.Api.DTOs.Favorites;
+using MovieFlix.Api.DTOs.Common;
+using MovieFlix.Api.DTOs.Media;
+using MovieFlix.Api.Models;
 
 namespace MovieFlix.Api.Services
 {
     public interface IWatchlistService
     {
-        Task<List<FavoriteMovieResponse>> GetUserWatchlistAsync(string userId);
+        Task<PagedResponse<SavedMediaResponse>> GetAsync(
+            string userId,
+            MediaType? mediaType,
+            int page,
+            int pageSize,
+            string? sort,
+            CancellationToken cancellationToken = default);
 
-        Task<FavoriteMovieResponse> AddByTmdbIdAsync(
-            string userId, int tmdbId, CancellationToken cancellationToken = default);
+        Task<SavedMediaResponse> AddAsync(
+            string userId,
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken = default);
 
-        Task<FavoriteMovieResponse?> AddAsync(string userId, int movieId);
-
-        Task<bool> RemoveAsync(string userId, int movieId);
+        Task RemoveAsync(
+            string userId,
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken = default);
     }
 }

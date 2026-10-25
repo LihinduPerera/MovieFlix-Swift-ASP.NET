@@ -4,26 +4,23 @@ namespace MovieFlix.Api.Services
 {
     public interface IAuthService
     {
-        /// <summary>
-        /// Registers a new user. Throws <see cref="Exceptions.UserAlreadyExistsException"/>
-        /// when the email is taken; Identity validation failures throw
-        /// <see cref="Exceptions.IdentityValidationException"/>.
-        /// </summary>
-        Task RegisterAsync(RegisterRequest request);
+        /// <summary>Registers a user and returns an initial token pair.</summary>
+        Task<LoginResponse> RegisterAsync(
+            RegisterRequest request,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Logs a user in and returns an access + refresh token pair, or null
-        /// when the credentials are invalid.
-        /// </summary>
-        Task<LoginResponse?> LoginAsync(LoginRequest request);
+        /// <summary>Returns null when the credentials are invalid.</summary>
+        Task<LoginResponse?> LoginAsync(
+            LoginRequest request,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Exchanges a valid refresh token for a new access + refresh token pair
-        /// (refresh token rotation). Returns null when the token is invalid.
-        /// </summary>
-        Task<LoginResponse?> RefreshAsync(RefreshRequest request);
+        /// <summary>Rotates a refresh token and issues a new access token.</summary>
+        Task<LoginResponse?> RefreshAsync(
+            RefreshRequest request,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>Logs the current user out by revoking their refresh tokens.</summary>
-        Task LogoutAsync(string userId);
+        Task LogoutAsync(
+            string userId,
+            CancellationToken cancellationToken = default);
     }
 }

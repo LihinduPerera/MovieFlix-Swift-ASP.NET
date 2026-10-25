@@ -8,28 +8,31 @@ namespace MovieFlix.Api.Services
     public class PreferencesService : IPreferencesService
     {
         private readonly MovieFlixDbContext _context;
+        private readonly TimeProvider _timeProvider;
 
-        public PreferencesService(MovieFlixDbContext context)
+        public PreferencesService(
+            MovieFlixDbContext context,
+            TimeProvider timeProvider)
         {
             _context = context;
+            _timeProvider = timeProvider;
         }
 
-        public async Task<PreferencesResponse?> GetAsync(string userId)
+        public async Task<PreferencesResponse?> GetAsync(
+            string userId,
+            CancellationToken cancellationToken = default)
         {
-            var preferences = await GetOrCreateAsync(userId);
+            var preferences = await GetOrCreateAsync(userId, cancellationToken);
 
-            if (preferences is null)
-            {
-                return null;
-            }
-
-            return MapToResponse(preferences);
+            return preferences is null ? null : MapToResponse(preferences);
         }
 
         public async Task<PreferencesResponse?> UpdateAsync(
-            string userId, UpdatePreferencesRequest request)
+            string userId,
+            UpdatePreferencesRequest request,
+            CancellationToken cancellationToken = default)
         {
-            var preferences = await GetOrCreateAsync(userId);
+            var preferences = await GetOrCreateAsync(userId, cancellationToken);
 
             if (preferences is null)
             {
@@ -42,22 +45,20 @@ namespace MovieFlix.Api.Services
             preferences.AutoPlayTrailers = request.AutoPlayTrailers;
             preferences.EmailNotifications = request.EmailNotifications;
             preferences.MatureContentFilter = request.MatureContentFilter;
-            preferences.UpdatedAt = DateTime.UtcNow;
+            preferences.UpdatedAt = _timeProvider.GetUtcNow().UtcDateTime;
 
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             return MapToResponse(preferences);
         }
 
-        /// <summary>
-        /// Loads the user's preferences, inserting a default row the first time
-        /// they are accessed. Returns null when the user does not exist.
-        /// </summary>
-        private async Task<UserPreferences?> GetOrCreateAsync(string userId)
+        private async Task<UserPreferences?> GetOrCreateAsync(
+            string userId,
+            CancellationToken cancellationToken)
         {
             var userExists = await _context.Users
                 .AsNoTracking()
-                .AnyAsync(u => u.Id == userId);
+                .AnyAsync(user => user.Id == userId, cancellationToken);
 
             if (!userExists)
             {
@@ -65,22 +66,39 @@ namespace MovieFlix.Api.Services
             }
 
             var preferences = await _context.UserPreferences
-                .FirstOrDefaultAsync(p => p.UserId == userId);
+                .FirstOrDefaultAsync(
+                    item => item.UserId == userId,
+                    cancellationToken);
 
             if (preferences is not null)
             {
                 return preferences;
             }
 
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
+
             preferences = new UserPreferences
             {
                 UserId = userId,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                CreatedAt = now,
+                UpdatedAt = now
             };
 
             _context.UserPreferences.Add(preferences);
-            await _context.SaveChangesAsync();
+
+            try
+            {
+                await _context.SaveChangesAsync(cancellationToken);
+            }
+            catch (DbUpdateException)
+            {
+                _context.ChangeTracker.Clear();
+
+                preferences = await _context.UserPreferences
+                    .FirstOrDefaultAsync(
+                        item => item.UserId == userId,
+                        cancellationToken);
+            }
 
             return preferences;
         }

@@ -1,101 +1,49 @@
-# MovieFlix 🎬
+﻿# MovieFlix
 
-MovieFlix is a movie-discovery app that I'm rebuilding as I learn
-**SwiftUI and ASP.NET Core**. The project is evolving from an initial
-SwiftUI app into a client--server application with a dedicated REST API,
-database persistence, and authentication.
+MovieFlix is a unified movie and TV discovery platform with a SwiftUI client and an ASP.NET Core REST API.
 
-The goal is not just to make the app work, but to understand the
-engineering decisions behind it and build a foundation that can grow.
+> **Project status:** The ASP.NET Core backend is actively being developed and tested. The SwiftUI V2 client is part of the ongoing project. Features and structure may change as development continues.
 
-> **Project status:** The ASP.NET Core backend is actively being
-> developed and tested. The SwiftUI V2 client is part of the ongoing
-> project. Features and structure may change as development continues.
+## Current backend features
 
-## ✨ Current backend features
+- **Movies and TV from TMDB** — search (multi/movie/tv), trending/feeds, details, seasons/episodes with metadata from TMDB.
+- **Episode-level watch tracking** — per-episode progress, next-episode resolution, and Continue Watching across movies and TV.
+- **REST API** — versioned endpoints under `/api/v1`; the API reports its supported versions via the `api-supported-versions` response header.
+- **User accounts and authentication** — ASP.NET Core Identity with password hashing, JWT-based login, refresh-token rotation, and role-based authorization.
+- **Library parity** — favorites, watchlist, ratings (1–5 with community average), reviews, collections, watch history, search history, and user preferences for both movies and TV.
+- **Database persistence** — Entity Framework Core with SQLite by default (Postgres configurable).
+- **TMDB resilience and caching** — automatic retries, timeouts, circuit breaker, and output caching for TMDB-backed responses.
+- **Rate limiting** — a global per-client request budget plus a stricter limit on the login, register, and refresh endpoints (configurable).
+- **Health checks** — `/health`, `/health/live`, `/health/ready` endpoints.
+- **Structured logging** — request/response logging via Serilog writing structured events to the console.
+- **CORS** — configurable allowed origins for a future web front-end.
+- **Validation and error handling** — consistent Problem Details responses for API errors, including invalid input and missing records.
+- **Authorization** — protected operations using JWT authentication and role-based access rules.
+- **Automated tests** — integration tests using xUnit and an isolated SQLite in-memory database (no external network calls).
 
--   **Movie data from TMDB** --- search for movies and retrieve movie
-    details through the backend.
--   **REST API** --- versioned endpoints under `/api/v1`; the API reports its
-    supported versions via the `api-supported-versions` response header.
--   **User accounts and authentication** --- ASP.NET Core Identity with
-    password hashing, JWT-based login, refresh-token rotation, and
-    role-based authorization.
--   **Favorites** --- add, list, and remove a user's favorite movies.
--   **Watchlist** --- a separate "watch later" list per user.
--   **Ratings** --- 1--5 star ratings with a community average per movie.
--   **Watch history** --- playback progress, a Continue Watching rail, and
-    a paginated Recently Watched list.
--   **Reviews** --- create, read, update, and delete movie reviews with
-    ownership rules and pagination.
--   **Collections** --- user-defined collections that group movies
-    (many-to-many).
--   **Search history** --- recent, de-duplicated search terms per user.
--   **User preferences** --- language, region, theme, and toggles per user.
--   **Database persistence** --- Entity Framework Core with SQLite.
--   **TMDB resilience and caching** --- automatic retries, timeouts, a circuit
-    breaker, and output caching for TMDB-backed responses.
--   **Rate limiting** --- a global per-client request budget plus a stricter
-    limit on the login, register, and refresh endpoints (configurable).
--   **Health checks** --- a `/health` endpoint that verifies database
-    connectivity for probes and load balancers.
--   **Structured logging** --- request/response logging via Serilog writing
-    structured events to the console.
--   **CORS** --- configurable allowed origins for a future web front-end.
--   **Validation and error handling** --- consistent Problem Details
-    responses for API errors, including invalid input and missing
-    records.
--   **Authorization** --- protected operations using JWT authentication
-    and role-based access rules.
--   **Automated tests** --- service tests and API integration tests
-    using xUnit and an isolated SQLite in-memory database.
+See [docs/API_CONTRACT.md](docs/API_CONTRACT.md) for the complete client-facing contract and [docs/openapi.json](docs/openapi.json) for the OpenAPI document.
 
-The backend test suite currently contains **54 passing test cases**.
+## Tech stack
 
-## 🧰 Tech stack
+| Area | Technologies |
+| --- | --- |
+| iOS client | Swift, SwiftUI |
+| Backend | C#, ASP.NET Core Web API, **.NET 9** |
+| Database | SQLite (default), PostgreSQL (configurable) |
+| Data access | Entity Framework Core |
+| Authentication | ASP.NET Core Identity, JWT bearer authentication, refresh tokens, role-based authorization |
+| External movie data | [The Movie Database (TMDB)](https://www.themoviedb.org/) |
+| Resilience | Polly via `Microsoft.Extensions.Http.Resilience` (retry, timeout, circuit breaker) |
+| Caching | ASP.NET Core output caching |
+| API documentation | Swagger / OpenAPI |
+| Testing | xUnit, ASP.NET Core integration testing |
+| Logging | Serilog (structured console logging) |
+| API versioning | Asp.Versioning (v1, reported on responses) |
+| Rate limiting | ASP.NET Core rate limiting |
+| Health checks | ASP.NET Core health checks |
+| Deployment | Docker, docker-compose, GitHub Actions CI |
 
-  --------------------------------------------------------------------------
-  Area                                Technologies
-  ----------------------------------- --------------------------------------
-  iOS client                          Swift, SwiftUI
-
-  Backend                             C#, ASP.NET Core Web API, .NET 9
-
-  Database                            SQLite
-
-  Data access                         Entity Framework Core
-
-  Authentication                      ASP.NET Core Identity, JWT bearer
-                                      authentication, refresh tokens,
-                                      role-based authorization
-
-  External movie data                 [The Movie Database
-                                      (TMDB)](https://www.themoviedb.org/)
-
-  Resilience                          Polly via
-                                      `Microsoft.Extensions.Http.Resilience`
-                                      (retry, timeout, circuit breaker)
-
-  Caching                             ASP.NET Core output caching
-
-  API documentation                   Swagger / OpenAPI
-
-  Testing                             xUnit, ASP.NET Core integration
-                                      testing
-
-  Logging                             Serilog (structured console logging)
-
-  API versioning                      Asp.Versioning (v1, reported on
-                                      responses)
-
-  Rate limiting                       ASP.NET Core rate limiting
-
-  Health checks                       ASP.NET Core health checks (`/health`)
-
-  Deployment                          Docker, docker-compose, GitHub Actions CI
-  --------------------------------------------------------------------------
-
-## 🗂️ Repository structure
+## Repository structure
 
 ``` text
 MovieFlix-Swift-ASP.NET/
@@ -107,9 +55,7 @@ MovieFlix-Swift-ASP.NET/
     └── MovieFlix.Api.Tests/# Automated tests
 ```
 
-The exact contents may evolve as the project grows.
-
-## 🏗️ How it fits together
+## How it fits together
 
 ``` text
 SwiftUI app
@@ -119,199 +65,53 @@ SwiftUI app
 ASP.NET Core REST API
     |                 \
     v                  v
-SQLite database       TMDB API
-(users, movies,       (external movie data)
+SQLite/Postgres DB    TMDB API
+(users, media cache,
  favorites, watchlist,
  ratings, reviews,
- collections, ...)
+ collections, history,
+ episode progress)
 ```
 
-The backend acts as the boundary between the iOS app, persisted user
-data, and TMDB. This also provides a place to centralize validation,
-authentication, authorization, and error handling.
-
-## 🚀 Run the backend locally
+## Run the backend locally
 
 ### Prerequisites
 
--   [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
--   A TMDB API key for endpoints that use TMDB
--   Git
+- [.NET 9 SDK](https://dotnet.microsoft.com/download/dotnet/9.0)
+- A TMDB API key (read token) for endpoints that use TMDB
+- Git
 
-### 1. Clone the repository
+### 1. Clone and configure secrets
 
-``` bash
+```bash
 git clone https://github.com/LihinduPerera/MovieFlix-Swift-ASP.NET.git
-cd MovieFlix-Swift-ASP.NET
+cd MovieFlix-Swift-ASP.NET/backend/MovieFlix.Api
+dotnet user-secrets set "Tmdb:AccessToken" "<your-tmdb-read-token>"
+dotnet user-secrets set "Jwt:Key" "<a-strong-random-key>"
 ```
 
-### 2. Configure the backend
+### 2. Build and run
 
-Secrets are **not** stored in `appsettings.json` (that file only holds
-non-secret defaults). Provide the two required secrets using **User
-Secrets** (recommended for local development), environment variables, or
-another ASP.NET Core configuration provider.
-
-Using User Secrets (already wired up via the `UserSecretsId` in
-`MovieFlix.Api.csproj`):
-
-``` bash
-cd backend/MovieFlix.Api
-
-# TMDB API read access token (from https://www.themoviedb.org/settings/api)
-dotnet user-secrets set "Tmdb:AccessToken" "<your-tmdb-token>"
-
-# A strong, unique JWT signing key (>= 32 bytes) for local development
-dotnet user-secrets set "Jwt:Key" "<your-strong-jwt-key>"
+```bash
+cd ../..
+dotnet build backend/MovieFlix.sln
+dotnet run --project backend/MovieFlix.Api/MovieFlix.Api.csproj
 ```
 
--   Do not commit real API keys, signing keys, passwords, or other
-    secrets to Git. User Secrets are stored outside the repository.
+### 3. Test
 
-> **Note:** `Jwt:Key`, `Tmdb:AccessToken`, and other secrets were removed
-> from source control. If you are pulling this repo for the first time,
-> the API will not authenticate or call TMDB until you set the secrets
-> above.
-
-### 3. Start the API
-
-From the repository root, run:
-
-``` bash
-dotnet run --project .\backend\MovieFlix.Api\MovieFlix.Api.csproj
+```bash
+dotnet test backend/MovieFlix.sln
 ```
 
-The local launch profile has been configured to use these development
-URLs:
+See [docs/OPERATIONS.md](docs/OPERATIONS.md) for full configuration (Postgres, Docker, env vars, migrations).
 
--   HTTP: `http://localhost:5122`
--   HTTPS: `https://localhost:7014`
+## API overview (high level)
 
-Your active launch profile and configuration determine which URL is
-available. Open Swagger if it is enabled in the current Development
-configuration to explore the API.
+Base path: `/api/v1`. Key areas: auth, search/discovery, media details (movies/TV + seasons/episodes), `/me` profile/library (favorites/watchlist/ratings/history/continue/reviews/collections/search-history/preferences), admin media refresh, health. Full details in [docs/API_CONTRACT.md](docs/API_CONTRACT.md).
 
-### 4. Run the tests
+## Acknowledgements
 
-From the repository root:
+- [The Movie Database (TMDB)](https://www.themoviedb.org/) for movie/TV data. This product uses the TMDB API but is not endorsed or certified by TMDB.
 
-``` bash
-dotnet test .\backend\MovieFlix.Api.Tests\MovieFlix.Api.Tests.csproj
-```
-
-The integration tests use an isolated SQLite in-memory database rather
-than the development database.
-
-## 📦 Deploying with Docker
-
-The backend can run in a container (Docker Compose is the quickest way to try
-it):
-
-``` bash
-cp .env.example .env     # fill in JWT_KEY and TMDB_ACCESS_TOKEN
-docker compose up --build
-curl http://localhost:8080/health
-```
-
-The API listens on port 8080, runs as a non-root user, uses SQLite by
-default (persisted in a Docker volume), and exposes `/health` for probes.
-An optional PostgreSQL service is available behind the `postgres` compose
-profile.
-
-> **Note:** the Docker assets were authored without Docker installed on the
-> development machine, so they have not been executed locally. Validate them
-> before relying on them.
-
-Full operational details --- environments, secrets, PostgreSQL, backups and
-observability --- live in
-[`docs/OPERATIONS.md`](docs/OPERATIONS.md).
-
-## 🔌 API overview
-
-The API uses the `/api/v1` route prefix. Representative endpoints
-include:
-
-  -----------------------------------------------------------------------------------------------------
-  Purpose                 Endpoint                                              Access
-  ----------------------- ----------------------------------------------------- -----------------------
-  Register / log in       `POST /api/v1/Auth/register`, `POST /api/v1/Auth/login`  Public
-
-  Refresh / log out       `POST /api/v1/Auth/refresh`, `POST /api/v1/Auth/logout`  Public / token
-
-  Search movies through   `GET /api/v1/Movies/search?query=...`                 Public
-  TMDB                                                                          
-
-  Get TMDB movie details  `GET /api/v1/Movies/tmdb/{tmdbId}`                    Public
-
-  List locally stored     `GET /api/v1/Movies`                                  Public
-  movies                                                                        
-
-  Get a locally stored    `GET /api/v1/Movies/{id}`                             Public
-  movie                                                                         
-
-  Manage local movie      `POST`, `PUT`, `DELETE /api/v1/Movies` routes         Restricted by
-  records                                                                       authorization
-
-  Manage favorites        `GET`, `POST`, `DELETE /api/v1/me/favorites`          Authenticated
-
-  Manage watchlist        `GET`, `POST`, `DELETE /api/v1/me/watchlist`          Authenticated
-
-  Rate movies             `GET`, `PUT`, `DELETE /api/v1/me/ratings/{movieId}`   Authenticated
-
-  Community rating        `GET /api/v1/movies/{movieId}/ratings`                Public
-
-  Watch history           `GET /api/v1/me/history`, `/continue`                 Authenticated
-
-  Movie reviews           `GET`, `POST /api/v1/movies/{movieId}/reviews`        Public / Authenticated
-
-  Edit / delete a review  `PUT`, `DELETE /api/v1/reviews/{reviewId}`            Authenticated (owner)
-
-  Manage collections      `GET`, `POST`, `PUT`, `DELETE /api/v1/me/collections` Authenticated
-
-  Search history          `GET`, `POST`, `DELETE /api/v1/me/search-history`     Authenticated
-
-  User preferences        `GET`, `PUT /api/v1/me/preferences`                   Authenticated
-
-  Health check            `GET /health`                                          Public
-  -----------------------------------------------------------------------------------------------------
-
-Check the current controllers and Swagger documentation for exact
-request bodies, route details, and authorization requirements, as the
-API is still evolving.
-
-## 🧪 Engineering practices I'm learning and applying
-
--   Keeping controllers, services, data access, and DTOs separated by
-    responsibility.
--   Using asynchronous APIs for I/O work.
--   Validating incoming input and returning appropriate HTTP status
-    codes.
--   Centralizing exception handling with Problem Details responses.
--   Enforcing database constraints and indexes where appropriate.
--   Protecting endpoints with authentication and authorization.
--   Testing behavior at both service and HTTP integration levels.
--   Using EF Core migrations to evolve the database schema.
-
-This is a learning project, so I'm applying these practices
-incrementally and refining the implementation as I learn more.
-
-## 🛣️ What's next
-
--   Continue building the SwiftUI V2 client against the ASP.NET Core
-    API.
--   Improve API test coverage and validation.
--   Refine configuration and deployment practices.
--   Continue reviewing security, maintainability, and performance as the
-    project grows.
-
-## 🙏 Acknowledgements
-
--   [The Movie Database (TMDB)](https://www.themoviedb.org/) for movie
-    data.
-
-This product uses the TMDB API but is not endorsed or certified by TMDB.
-
-------------------------------------------------------------------------
-
-**Built while learning SwiftUI, C#, and ASP.NET Core --- one step at a
-time.**
+**Built while learning SwiftUI, C#, and ASP.NET Core.**

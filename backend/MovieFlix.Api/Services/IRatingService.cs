@@ -1,27 +1,33 @@
 using MovieFlix.Api.DTOs.Ratings;
+using MovieFlix.Api.Models;
 
 namespace MovieFlix.Api.Services
 {
     public interface IRatingService
     {
-        /// <summary>
-        /// Creates or updates the user's rating for a movie and returns the
-        /// updated rating. Returns null when the user or movie does not exist.
-        /// </summary>
-        Task<UserRatingResponse?> RateAsync(
-            string userId, int movieId, int rating);
+        Task<MediaRatingResponse?> GetMyRatingAsync(
+            string userId,
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>Gets the current user's rating for a movie, or null.</summary>
-        Task<UserRatingResponse?> GetMyRatingAsync(string userId, int movieId);
+        Task<MediaRatingResponse> RateAsync(
+            string userId,
+            MediaType mediaType,
+            int tmdbId,
+            int rating,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>Removes the user's rating. Returns false if none existed.</summary>
-        Task<bool> RemoveAsync(string userId, int movieId);
+        Task RemoveAsync(
+            string userId,
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Computes the community average for a movie, including the current
-        /// user's own rating if they have one.
-        /// </summary>
-        Task<CommunityRatingResponse?> GetCommunityRatingAsync(
-            string? userId, int movieId);
+        Task<CommunityRatingResponse?> GetCommunityAsync(
+            MediaType mediaType,
+            int tmdbId,
+            string? userId,
+            CancellationToken cancellationToken = default);
     }
 }

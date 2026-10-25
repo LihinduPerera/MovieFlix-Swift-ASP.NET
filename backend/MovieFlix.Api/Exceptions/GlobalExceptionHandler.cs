@@ -1,8 +1,13 @@
 ﻿using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.WebUtilities;
 
 namespace MovieFlix.Api.Exceptions
 {
+    /// <summary>
+    /// Converts domain exceptions into RFC 7807 ProblemDetails responses with a
+    /// stable problem type, trace id and (for validation) an errors dictionary.
+    /// </summary>
     public class GlobalExceptionHandler : IExceptionHandler
     {
         private readonly ILogger<GlobalExceptionHandler> _logger;
@@ -17,140 +22,164 @@ namespace MovieFlix.Api.Exceptions
             Exception exception,
             CancellationToken cancellationToken)
         {
-            ProblemDetails problemDetails = new ProblemDetails
-            {
-                Title = "An error occurred.",
-                Status = StatusCodes.Status500InternalServerError,
-                Detail = "An unexpected error occurred."
-            };
+            var (problem, retryAfterSeconds) = Map(exception, httpContext);
 
-            if (exception is MovieAlreadyExistsException movieException)
-            {
-                problemDetails = new ProblemDetails
-                {
-                    Title = "Movie already exists.",
-                    Status = StatusCodes.Status409Conflict,
-                    Detail = movieException.Message
-                };
-            }
-            else if (exception is FavoriteAlreadyExistsException favoriteException)
-            {
-                problemDetails = new ProblemDetails
-                {
-                    Title = "Favorite already exists.",
-                    Status = StatusCodes.Status409Conflict,
-                    Detail = favoriteException.Message
-                };
-            }
-            else if (exception is UserAlreadyExistsException userException)
-            {
-                problemDetails = new ProblemDetails
-                {
-                    Title = "User already exists.",
-                    Status = StatusCodes.Status409Conflict,
-                    Detail = userException.Message
-                };
-            }
-            else if (exception is IdentityValidationException identityValidation)
-            {
-                problemDetails = new ProblemDetails
-                {
-                    Title = "Validation failed.",
-                    Status = StatusCodes.Status400BadRequest,
-                    Detail = "One or more validation errors occurred."
-                };
+            problem.Extensions["traceId"] = httpContext.TraceIdentifier;
+            problem.Type ??= ProblemTypes.ForStatus(problem.Status);
 
-                var errors = identityValidation.Errors
-                    .Select(e => new { e.Code, e.Description })
-                    .ToList();
-
-                problemDetails.Extensions["errors"] = errors;
-            }
-            else if (exception is TmdbServiceException tmdbException)
-            {
-                problemDetails = new ProblemDetails
-                {
-                    Title = "TMDb service error.",
-                    Status = StatusCodes.Status502BadGateway,
-                    Detail = tmdbException.Message
-                };
-            }
-            else if (exception is ReviewAlreadyExistsException reviewException)
-            {
-                problemDetails = new ProblemDetails
-                {
-                    Title = "Review already exists.",
-                    Status = StatusCodes.Status409Conflict,
-                    Detail = reviewException.Message
-                };
-            }
-            else if (exception is ForbiddenAccessException forbiddenException)
-            {
-                problemDetails = new ProblemDetails
-                {
-                    Title = "Forbidden.",
-                    Status = StatusCodes.Status403Forbidden,
-                    Detail = forbiddenException.Message
-                };
-            }
-            else if (exception is DuplicateResourceException duplicateException)
-            {
-                problemDetails = new ProblemDetails
-                {
-                    Title = "Duplicate resource.",
-                    Status = StatusCodes.Status409Conflict,
-                    Detail = duplicateException.Message
-                };
-            }
-            else if (exception is InvalidOperationException)
-            {
-                problemDetails = new ProblemDetails
-                {
-                    Title = "Invalid operation.",
-                    Status = StatusCodes.Status400BadRequest,
-                    Detail = exception.Message
-                };
-            }
-            else if (exception is UnauthorizedAccessException)
-            {
-                problemDetails = new ProblemDetails
-                {
-                    Title = "Unauthorized.",
-                    Status = StatusCodes.Status401Unauthorized,
-                    Detail = exception.Message
-                };
-            }
-
-            if (problemDetails.Status >= 500)
+            if (problem.Status >= 500)
             {
                 _logger.LogError(
                     exception,
-                    "A server error occurred while processing {HttpMethod} {RequestPath}. TraceId: {TraceId}",
+                    "Server error processing {HttpMethod} {RequestPath}. Status: {Status}. TraceId: {TraceId}",
                     httpContext.Request.Method,
                     httpContext.Request.Path,
+                    problem.Status,
                     httpContext.TraceIdentifier);
             }
             else
             {
                 _logger.LogWarning(
                     exception,
-                    "A handled error occurred while processing {HttpMethod} {RequestPath}. Status: {Status}. TraceId: {TraceId}",
+                    "Handled error processing {HttpMethod} {RequestPath}. Status: {Status}. TraceId: {TraceId}",
                     httpContext.Request.Method,
                     httpContext.Request.Path,
-                    problemDetails.Status,
+                    problem.Status,
                     httpContext.TraceIdentifier);
             }
 
-            httpContext.Response.StatusCode = problemDetails.Status!.Value;
+            httpContext.Response.StatusCode = problem.Status!.Value;
+            httpContext.Response.ContentType = "application/problem+json";
 
-            problemDetails.Extensions["traceId"] =
-                httpContext.TraceIdentifier;
+            if (retryAfterSeconds is not null)
+            {
+                httpContext.Response.Headers.RetryAfter =
+                    retryAfterSeconds.Value.ToString();
+            }
 
             await httpContext.Response.WriteAsJsonAsync(
-                problemDetails,
+                problem,
+                options: null,
+                contentType: "application/problem+json",
                 cancellationToken);
 
             return true;
+        }
+
+        private static (ProblemDetails Problem, int? RetryAfterSeconds) Map(
+            Exception exception,
+            HttpContext httpContext)
+        {
+            switch (exception)
+            {
+                case TmdbNotFoundException:
+                    return (Create(
+                        StatusCodes.Status404NotFound,
+                        "Title not found.",
+                        "TMDB does not have a title with that identifier."), null);
+
+                case TmdbRateLimitedException rateLimited:
+                    return (Create(
+                        StatusCodes.Status503ServiceUnavailable,
+                        "Upstream rate limit reached.",
+                        "TMDB is rate limiting requests. Try again later."),
+                        rateLimited.RetryAfterSeconds);
+
+                case TmdbUnavailableException:
+                    return (Create(
+                        StatusCodes.Status503ServiceUnavailable,
+                        "TMDB unavailable.",
+                        "The TMDB provider is temporarily unavailable. Try again later."), null);
+
+                case TmdbServiceException:
+                    return (Create(
+                        StatusCodes.Status502BadGateway,
+                        "TMDB error.",
+                        "TMDB could not complete the request."), null);
+
+                case LockedOutException:
+                    return (Create(
+                        StatusCodes.Status423Locked,
+                        "Account locked.",
+                        "This account is temporarily locked. Try again later."), null);
+
+                case ForbiddenAccessException forbidden:
+                    return (Create(
+                        StatusCodes.Status403Forbidden,
+                        "Forbidden.",
+                        forbidden.Message), null);
+
+                case ResourceNotFoundException notFound:
+                    return (Create(
+                        StatusCodes.Status404NotFound,
+                        "Resource not found.",
+                        notFound.Message), null);
+
+                case ReviewAlreadyExistsException review:
+                    return (Create(
+                        StatusCodes.Status409Conflict,
+                        "Review already exists.",
+                        review.Message), null);
+
+                case DuplicateResourceException duplicate:
+                    return (Create(
+                        StatusCodes.Status409Conflict,
+                        "Duplicate resource.",
+                        duplicate.Message), null);
+
+                case UserAlreadyExistsException user:
+                    return (Create(
+                        StatusCodes.Status409Conflict,
+                        "User already exists.",
+                        user.Message), null);
+
+                case RequestValidationException validation:
+                    return (CreateValidation(validation.Errors), null);
+
+                case IdentityValidationException identity:
+                    return (CreateValidation(identity.Errors), null);
+
+                case UnauthorizedAccessException unauthorized:
+                    return (Create(
+                        StatusCodes.Status401Unauthorized,
+                        "Unauthorized.",
+                        unauthorized.Message), null);
+
+                default:
+                    return (Create(
+                        StatusCodes.Status500InternalServerError,
+                        "An unexpected error occurred.",
+                        "An unexpected error occurred."), null);
+            }
+        }
+
+        private static ProblemDetails Create(int status, string title, string detail)
+        {
+            return new ProblemDetails
+            {
+                Type = ProblemTypes.ForStatus(status),
+                Title = title,
+                Status = status,
+                Detail = detail
+            };
+        }
+
+        private static ProblemDetails CreateValidation(
+            IReadOnlyDictionary<string, string[]> errors)
+        {
+            var problem = new ProblemDetails
+            {
+                Type = ProblemTypes.Validation,
+                Title = "One or more validation errors occurred.",
+                Status = StatusCodes.Status400BadRequest,
+                Detail = ReasonPhrases.GetReasonPhrase(StatusCodes.Status400BadRequest)
+            };
+
+            problem.Extensions["errors"] = errors.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value);
+
+            return problem;
         }
     }
 }

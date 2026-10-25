@@ -8,49 +8,43 @@ namespace MovieFlix.Api.Controllers
 {
     [ApiController]
     [ApiVersion("1.0")]
-    [Route("api/v1/[controller]")]
-    public class PreferencesController : ControllerBase
+    [Route("api/v1/me/preferences")]
+    [Authorize]
+    public class PreferencesController : ApiControllerBase
     {
         private readonly IPreferencesService _preferencesService;
-        private readonly ICurrentUserService _currentUser;
 
-        public PreferencesController(
-            IPreferencesService preferencesService,
-            ICurrentUserService currentUser)
+        public PreferencesController(IPreferencesService preferencesService)
         {
             _preferencesService = preferencesService;
-            _currentUser = currentUser;
         }
 
-        /// <summary>Returns the current user's preferences (creates defaults on first call).</summary>
-        [Authorize]
-        [HttpGet("/api/v1/me/preferences")]
-        public async Task<IActionResult> Get()
+        [HttpGet]
+        public async Task<ActionResult<PreferencesResponse>> Get(
+            CancellationToken cancellationToken)
         {
-            var result = await _preferencesService.GetAsync(_currentUser.UserId);
+            var preferences = await _preferencesService.GetAsync(
+                RequireUserId(),
+                cancellationToken);
 
-            if (result is null)
-            {
-                return NotFound();
-            }
-
-            return Ok(result);
+            return preferences is null
+                ? NotFoundProblem("Preferences were not found for this user.")
+                : Ok(preferences);
         }
 
-        /// <summary>Updates the current user's preferences.</summary>
-        [Authorize]
-        [HttpPut("/api/v1/me/preferences")]
-        public async Task<IActionResult> Update(UpdatePreferencesRequest request)
+        [HttpPut]
+        public async Task<ActionResult<PreferencesResponse>> Update(
+            [FromBody] UpdatePreferencesRequest request,
+            CancellationToken cancellationToken)
         {
-            var result = await _preferencesService.UpdateAsync(
-                _currentUser.UserId, request);
+            var preferences = await _preferencesService.UpdateAsync(
+                RequireUserId(),
+                request,
+                cancellationToken);
 
-            if (result is null)
-            {
-                return NotFound();
-            }
-
-            return Ok(result);
+            return preferences is null
+                ? NotFoundProblem("Preferences were not found for this user.")
+                : Ok(preferences);
         }
     }
 }

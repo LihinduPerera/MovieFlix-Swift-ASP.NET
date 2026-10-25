@@ -1,78 +1,65 @@
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using MovieFlix.Api.DTOs.Favorites;
+using MovieFlix.Api.DTOs.Common;
+using MovieFlix.Api.DTOs.Media;
+using MovieFlix.Api.Models;
 using MovieFlix.Api.Services;
 
 namespace MovieFlix.Api.Controllers
 {
     [ApiController]
     [ApiVersion("1.0")]
-    [Route("api/v1/[controller]")]
-    public class WatchlistController : ControllerBase
+    [Route("api/v1/me/watchlist")]
+    [Authorize]
+    public class WatchlistController : ApiControllerBase
     {
         private readonly IWatchlistService _watchlistService;
-        private readonly ICurrentUserService _currentUser;
 
-        public WatchlistController(
-            IWatchlistService watchlistService,
-            ICurrentUserService currentUser)
+        public WatchlistController(IWatchlistService watchlistService)
         {
             _watchlistService = watchlistService;
-            _currentUser = currentUser;
         }
 
-        [Authorize]
-        [HttpGet("/api/v1/me/watchlist")]
-        public async Task<IActionResult> GetMyWatchlist()
+        [HttpGet]
+        public async Task<ActionResult<PagedResponse<SavedMediaResponse>>> Get(
+            [FromQuery] LibraryListQueryRequest request,
+            CancellationToken cancellationToken)
         {
-            var items = await _watchlistService
-                .GetUserWatchlistAsync(_currentUser.UserId);
-
-            return Ok(items);
+            return Ok(await _watchlistService.GetAsync(
+                RequireUserId(),
+                request.MediaType,
+                request.Page,
+                request.PageSize,
+                request.Sort,
+                cancellationToken));
         }
 
-        [Authorize]
-        [HttpPost("/api/v1/me/watchlist/{movieId:int}")]
-        public async Task<IActionResult> Add(int movieId)
+        [HttpPut("{mediaType:mediaType}/{tmdbId:int}")]
+        public async Task<ActionResult<SavedMediaResponse>> Add(
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken)
         {
-            var result = await _watchlistService.AddAsync(_currentUser.UserId, movieId);
-
-            if (result is null)
-            {
-                return NotFound();
-            }
-
-            return CreatedAtAction(nameof(GetMyWatchlist), result);
+            return Ok(await _watchlistService.AddAsync(
+                RequireUserId(),
+                mediaType,
+                tmdbId,
+                cancellationToken));
         }
 
-        [Authorize]
-        [HttpPost("/api/v1/me/watchlist/tmdb/{tmdbId:int}")]
-        public async Task<ActionResult<FavoriteMovieResponse>> AddTmdb(int tmdbId, CancellationToken cancellationToken)
+        [HttpDelete("{mediaType:mediaType}/{tmdbId:int}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> Remove(
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken)
         {
-            if (tmdbId <= 0)
-            {
-                return BadRequest("TMDB movie ID must be greater than zero.");
-            }
-
-            var result = await _watchlistService.AddByTmdbIdAsync(
-                _currentUser.UserId,
+            await _watchlistService.RemoveAsync(
+                RequireUserId(),
+                mediaType,
                 tmdbId,
                 cancellationToken);
-
-            return Ok(result);
-        }
-
-        [Authorize]
-        [HttpDelete("/api/v1/me/watchlist/{movieId:int}")]
-        public async Task<IActionResult> Remove(int movieId)
-        {
-            var removed = await _watchlistService.RemoveAsync(_currentUser.UserId, movieId);
-
-            if (!removed)
-            {
-                return NotFound();
-            }
 
             return NoContent();
         }

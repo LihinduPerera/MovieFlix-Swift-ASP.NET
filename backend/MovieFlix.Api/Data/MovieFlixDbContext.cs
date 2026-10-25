@@ -1,37 +1,78 @@
-﻿using Microsoft.AspNetCore.Identity;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Microsoft.AspNetCore.Identity.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore;
 using MovieFlix.Api.Models;
 
 namespace MovieFlix.Api.Data
 {
     /// <summary>
-    /// The application's EF Core DbContext. Derives from
-    /// <see cref="IdentityDbContext{TUser}"/> so ASP.NET Core Identity owns the
-    /// identity tables (users, roles, claims, ...) while MovieFlix adds its own
-    /// domain tables (movies, favorites, refresh tokens).
+    /// Forces <see cref="DateTime"/> values to round-trip as UTC. SQLite stores
+    /// timestamps without a kind, so without this converter API responses would
+    /// lose the trailing "Z" required by the public contract.
+    /// </summary>
+    public sealed class UtcDateTimeConverter : ValueConverter<DateTime, DateTime>
+    {
+        public UtcDateTimeConverter()
+            : base(
+                value => value.Kind == DateTimeKind.Utc ? value : value.ToUniversalTime(),
+                value => DateTime.SpecifyKind(value, DateTimeKind.Utc))
+        {
+        }
+    }
+
+    /// <summary>Nullable counterpart of <see cref="UtcDateTimeConverter"/>.</summary>
+    public sealed class NullableUtcDateTimeConverter : ValueConverter<DateTime?, DateTime?>
+    {
+        public NullableUtcDateTimeConverter()
+            : base(
+                value => value.HasValue
+                    ? (value.Value.Kind == DateTimeKind.Utc
+                        ? value.Value
+                        : value.Value.ToUniversalTime())
+                    : value,
+                value => value.HasValue
+                    ? DateTime.SpecifyKind(value.Value, DateTimeKind.Utc)
+                    : value)
+        {
+        }
+    }
+
+    /// <summary>
+    /// The application's EF Core DbContext. Identity owns the account tables;
+    /// MovieFlix adds the unified media cache, TV metadata and user links.
     /// </summary>
     public class MovieFlixDbContext : IdentityDbContext<ApplicationUser>
     {
-        public MovieFlixDbContext(DbContextOptions<MovieFlixDbContext> options) : base(options)
+        public MovieFlixDbContext(DbContextOptions<MovieFlixDbContext> options)
+            : base(options)
         {
         }
 
-        public DbSet<Movie> Movies => Set<Movie>();
+        public DbSet<MediaItem> MediaItems => Set<MediaItem>();
+
+        public DbSet<Genre> Genres => Set<Genre>();
+
+        public DbSet<MediaItemGenre> MediaItemGenres => Set<MediaItemGenre>();
+
+        public DbSet<TvSeason> TvSeasons => Set<TvSeason>();
+
+        public DbSet<TvEpisode> TvEpisodes => Set<TvEpisode>();
 
         public DbSet<Favorite> Favorites => Set<Favorite>();
 
         public DbSet<WatchlistItem> WatchlistItems => Set<WatchlistItem>();
 
-        public DbSet<MovieRating> MovieRatings => Set<MovieRating>();
-
-        public DbSet<WatchHistoryEntry> WatchHistoryEntries => Set<WatchHistoryEntry>();
+        public DbSet<MediaRating> MediaRatings => Set<MediaRating>();
 
         public DbSet<Review> Reviews => Set<Review>();
 
         public DbSet<Collection> Collections => Set<Collection>();
 
-        public DbSet<CollectionMovie> CollectionMovies => Set<CollectionMovie>();
+        public DbSet<CollectionItem> CollectionItems => Set<CollectionItem>();
+
+        public DbSet<MediaWatchState> MediaWatchStates => Set<MediaWatchState>();
+
+        public DbSet<EpisodeWatchState> EpisodeWatchStates => Set<EpisodeWatchState>();
 
         public DbSet<SearchHistoryEntry> SearchHistoryEntries => Set<SearchHistoryEntry>();
 
@@ -39,219 +80,258 @@ namespace MovieFlix.Api.Data
 
         public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
+        protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+        {
+            configurationBuilder.Properties<DateTime>()
+                .HaveConversion<UtcDateTimeConverter>();
+
+            configurationBuilder.Properties<DateTime?>()
+                .HaveConversion<NullableUtcDateTimeConverter>();
+        }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
-            // Required by Identity: creates the AspNet* tables and mappings.
             base.OnModelCreating(modelBuilder);
 
-            modelBuilder.Entity<Movie>()
-                .HasIndex(movie => movie.TmdbId)
-                .IsUnique(); // Both performance and data integrity
+            modelBuilder.Entity<MediaItem>(entity =>
+            {
+                entity.HasIndex(media => new { media.TmdbId, media.MediaType }).IsUnique();
+                entity.HasIndex(media => new { media.MediaType, media.Title });
+                entity.HasIndex(media => media.CachedAt);
 
-            modelBuilder.Entity<Movie>()
-                .HasIndex(movie => movie.Title);
+                // Enum values are persisted as "movie" / "tv".
+                entity.Property(media => media.MediaType)
+                    .HasConversion<string>()
+                    .HasMaxLength(16);
+            });
 
-            modelBuilder.Entity<Favorite>()
-                .HasOne(favorite => favorite.User)
-                .WithMany()
-                .HasForeignKey(favorite => favorite.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<Genre>(entity =>
+            {
+                entity.HasIndex(genre => new { genre.TmdbId, genre.MediaType }).IsUnique();
 
-            modelBuilder.Entity<Favorite>()
-                .HasOne(favorite => favorite.Movie)
-                .WithMany()
-                .HasForeignKey(favorite => favorite.MovieId)
-                .OnDelete(DeleteBehavior.Cascade);
+                entity.Property(genre => genre.MediaType)
+                    .HasConversion<string>()
+                    .HasMaxLength(16);
+            });
 
-            // Composite unique constraint / index.
-            modelBuilder.Entity<Favorite>()
-                .HasIndex(favorite => new
+            modelBuilder.Entity<MediaItemGenre>(entity =>
+            {
+                entity.HasKey(link => new { link.MediaItemId, link.GenreId });
+
+                entity.HasOne(link => link.MediaItem)
+                    .WithMany(media => media.Genres)
+                    .HasForeignKey(link => link.MediaItemId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(link => link.Genre)
+                    .WithMany(genre => genre.MediaItems)
+                    .HasForeignKey(link => link.GenreId)
+                    .OnDelete(DeleteBehavior.Cascade);
+            });
+
+            modelBuilder.Entity<TvSeason>(entity =>
+            {
+                entity.HasIndex(season => new { season.MediaItemId, season.SeasonNumber })
+                    .IsUnique();
+
+                entity.HasOne(season => season.MediaItem)
+                    .WithMany(media => media.Seasons)
+                    .HasForeignKey(season => season.MediaItemId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
+
+            modelBuilder.Entity<TvEpisode>(entity =>
+            {
+                entity.HasIndex(episode => new
                 {
-                    favorite.UserId,
-                    favorite.MovieId
-                })
-                .IsUnique();
+                    episode.MediaItemId,
+                    episode.SeasonNumber,
+                    episode.EpisodeNumber
+                }).IsUnique();
 
-            modelBuilder.Entity<WatchlistItem>()
-                .HasOne(item => item.User)
-                .WithMany()
-                .HasForeignKey(item => item.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(episode => episode.TmdbId);
 
-            modelBuilder.Entity<WatchlistItem>()
-                .HasOne(item => item.Movie)
-                .WithMany()
-                .HasForeignKey(item => item.MovieId)
-                .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(episode => episode.MediaItem)
+                    .WithMany()
+                    .HasForeignKey(episode => episode.MediaItemId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-            modelBuilder.Entity<WatchlistItem>()
-                .HasIndex(item => new
-                {
-                    item.UserId,
-                    item.MovieId
-                })
-                .IsUnique();
+                entity.HasOne(episode => episode.TvSeason)
+                    .WithMany(season => season.Episodes)
+                    .HasForeignKey(episode => episode.TvSeasonId)
+                    .OnDelete(DeleteBehavior.Restrict);
+            });
 
-            modelBuilder.Entity<MovieRating>()
-                .HasOne(rating => rating.User)
-                .WithMany()
-                .HasForeignKey(rating => rating.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<Favorite>(entity =>
+            {
+                entity.HasOne(favorite => favorite.User)
+                    .WithMany()
+                    .HasForeignKey(favorite => favorite.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
 
-            modelBuilder.Entity<MovieRating>()
-                .HasOne(rating => rating.Movie)
-                .WithMany()
-                .HasForeignKey(rating => rating.MovieId)
-                .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(favorite => favorite.MediaItem)
+                    .WithMany()
+                    .HasForeignKey(favorite => favorite.MediaItemId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-            // One rating per user per movie.
-            modelBuilder.Entity<MovieRating>()
-                .HasIndex(rating => new
-                {
-                    rating.UserId,
-                    rating.MovieId
-                })
-                .IsUnique();
+                entity.HasIndex(favorite => new { favorite.UserId, favorite.MediaItemId })
+                    .IsUnique();
+            });
 
-            // Fast community-average lookups per movie.
-            modelBuilder.Entity<MovieRating>()
-                .HasIndex(rating => rating.MovieId);
+            modelBuilder.Entity<WatchlistItem>(entity =>
+            {
+                entity.HasOne(item => item.User)
+                    .WithMany()
+                    .HasForeignKey(item => item.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
 
-            modelBuilder.Entity<WatchHistoryEntry>()
-                .HasOne(entry => entry.User)
-                .WithMany()
-                .HasForeignKey(entry => entry.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(item => item.MediaItem)
+                    .WithMany()
+                    .HasForeignKey(item => item.MediaItemId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-            modelBuilder.Entity<WatchHistoryEntry>()
-                .HasOne(entry => entry.Movie)
-                .WithMany()
-                .HasForeignKey(entry => entry.MovieId)
-                .OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(item => new { item.UserId, item.MediaItemId })
+                    .IsUnique();
+            });
 
-            // One history row per user per movie (progress is upserted).
-            modelBuilder.Entity<WatchHistoryEntry>()
-                .HasIndex(entry => new
-                {
-                    entry.UserId,
-                    entry.MovieId
-                })
-                .IsUnique();
+            modelBuilder.Entity<MediaRating>(entity =>
+            {
+                entity.HasOne(rating => rating.User)
+                    .WithMany()
+                    .HasForeignKey(rating => rating.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
 
-            // "Continue watching" and "recently watched" query by user + time.
-            modelBuilder.Entity<WatchHistoryEntry>()
-                .HasIndex(entry => new
-                {
-                    entry.UserId,
-                    entry.WatchedAt
-                });
+                entity.HasOne(rating => rating.MediaItem)
+                    .WithMany()
+                    .HasForeignKey(rating => rating.MediaItemId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-            modelBuilder.Entity<Review>()
-                .HasOne(review => review.User)
-                .WithMany()
-                .HasForeignKey(review => review.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(rating => new { rating.UserId, rating.MediaItemId })
+                    .IsUnique();
 
-            modelBuilder.Entity<Review>()
-                .HasOne(review => review.Movie)
-                .WithMany()
-                .HasForeignKey(review => review.MovieId)
-                .OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(rating => rating.MediaItemId);
+            });
 
-            // One review per user per movie.
-            modelBuilder.Entity<Review>()
-                .HasIndex(review => new
-                {
-                    review.UserId,
-                    review.MovieId
-                })
-                .IsUnique();
+            modelBuilder.Entity<Review>(entity =>
+            {
+                entity.HasOne(review => review.User)
+                    .WithMany()
+                    .HasForeignKey(review => review.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
 
-            // Listing a movie's reviews is ordered by time.
-            modelBuilder.Entity<Review>()
-                .HasIndex(review => new
-                {
-                    review.MovieId,
-                    review.CreatedAt
-                });
+                entity.HasOne(review => review.MediaItem)
+                    .WithMany()
+                    .HasForeignKey(review => review.MediaItemId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-            modelBuilder.Entity<Collection>()
-                .HasOne(collection => collection.User)
-                .WithMany()
-                .HasForeignKey(collection => collection.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(review => new { review.UserId, review.MediaItemId })
+                    .IsUnique();
 
-            modelBuilder.Entity<Collection>()
-                .HasIndex(collection => collection.UserId);
+                entity.HasIndex(review => new { review.MediaItemId, review.CreatedAt });
+            });
 
-            modelBuilder.Entity<CollectionMovie>()
-                .HasOne(cm => cm.Collection)
-                .WithMany(collection => collection.Movies)
-                .HasForeignKey(cm => cm.CollectionId)
-                .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<Collection>(entity =>
+            {
+                entity.HasOne(collection => collection.User)
+                    .WithMany()
+                    .HasForeignKey(collection => collection.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
 
-            modelBuilder.Entity<CollectionMovie>()
-                .HasOne(cm => cm.Movie)
-                .WithMany()
-                .HasForeignKey(cm => cm.MovieId)
-                .OnDelete(DeleteBehavior.Cascade);
+                // Case-insensitive uniqueness per owner (NormalizedName is upper-cased).
+                entity.HasIndex(collection => new { collection.UserId, collection.NormalizedName })
+                    .IsUnique();
+            });
 
-            // A movie can appear at most once per collection.
-            modelBuilder.Entity<CollectionMovie>()
-                .HasIndex(cm => new
-                {
-                    cm.CollectionId,
-                    cm.MovieId
-                })
-                .IsUnique();
+            modelBuilder.Entity<CollectionItem>(entity =>
+            {
+                entity.HasOne(item => item.Collection)
+                    .WithMany(collection => collection.Items)
+                    .HasForeignKey(item => item.CollectionId)
+                    .OnDelete(DeleteBehavior.Cascade);
 
-            modelBuilder.Entity<SearchHistoryEntry>()
-                .HasOne(entry => entry.User)
-                .WithMany()
-                .HasForeignKey(entry => entry.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(item => item.MediaItem)
+                    .WithMany()
+                    .HasForeignKey(item => item.MediaItemId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-            // One row per distinct term per user (case-insensitive).
-            modelBuilder.Entity<SearchHistoryEntry>()
-                .HasIndex(entry => new
-                {
-                    entry.UserId,
-                    entry.NormalizedQuery
-                })
-                .IsUnique();
+                entity.HasIndex(item => new { item.CollectionId, item.MediaItemId })
+                    .IsUnique();
+            });
 
-            // Recent-searches lookups by user + time.
-            modelBuilder.Entity<SearchHistoryEntry>()
-                .HasIndex(entry => new
-                {
-                    entry.UserId,
-                    entry.SearchedAt
-                });
+            modelBuilder.Entity<MediaWatchState>(entity =>
+            {
+                entity.HasOne(state => state.User)
+                    .WithMany()
+                    .HasForeignKey(state => state.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
 
-            // One preferences row per user (1:1).
-            modelBuilder.Entity<UserPreferences>()
-                .HasOne(preferences => preferences.User)
-                .WithOne()
-                .HasForeignKey<UserPreferences>(preferences => preferences.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
+                entity.HasOne(state => state.MediaItem)
+                    .WithMany()
+                    .HasForeignKey(state => state.MediaItemId)
+                    .OnDelete(DeleteBehavior.Restrict);
 
-            modelBuilder.Entity<UserPreferences>()
-                .HasIndex(preferences => preferences.UserId)
-                .IsUnique();
+                entity.HasOne(state => state.LastTvEpisode)
+                    .WithMany()
+                    .HasForeignKey(state => state.LastTvEpisodeId)
+                    .OnDelete(DeleteBehavior.SetNull);
 
-            modelBuilder.Entity<RefreshToken>()
-                .HasOne(token => token.User)
-                .WithMany()
-                .HasForeignKey(token => token.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
+                entity.HasIndex(state => new { state.UserId, state.MediaItemId })
+                    .IsUnique();
 
-            // Lookups during refresh must be fast, and tokens are unique.
-            modelBuilder.Entity<RefreshToken>()
-                .HasIndex(token => token.TokenHash)
-                .IsUnique();
+                entity.HasIndex(state => new { state.UserId, state.LastWatchedAt });
+            });
 
-            modelBuilder.Entity<RefreshToken>()
-                .HasIndex(token => token.UserId);
+            modelBuilder.Entity<EpisodeWatchState>(entity =>
+            {
+                entity.HasOne(state => state.User)
+                    .WithMany()
+                    .HasForeignKey(state => state.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasOne(state => state.TvEpisode)
+                    .WithMany()
+                    .HasForeignKey(state => state.TvEpisodeId)
+                    .OnDelete(DeleteBehavior.Restrict);
+
+                entity.HasIndex(state => new { state.UserId, state.TvEpisodeId })
+                    .IsUnique();
+
+                entity.HasIndex(state => new { state.UserId, state.WatchedAt });
+            });
+
+            modelBuilder.Entity<SearchHistoryEntry>(entity =>
+            {
+                entity.HasOne(entry => entry.User)
+                    .WithMany()
+                    .HasForeignKey(entry => entry.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(entry => new { entry.UserId, entry.NormalizedQuery })
+                    .IsUnique();
+
+                entity.HasIndex(entry => new { entry.UserId, entry.SearchedAt });
+            });
+
+            modelBuilder.Entity<UserPreferences>(entity =>
+            {
+                entity.HasOne(preferences => preferences.User)
+                    .WithOne()
+                    .HasForeignKey<UserPreferences>(preferences => preferences.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(preferences => preferences.UserId).IsUnique();
+            });
+
+            modelBuilder.Entity<RefreshToken>(entity =>
+            {
+                entity.HasOne(token => token.User)
+                    .WithMany()
+                    .HasForeignKey(token => token.UserId)
+                    .OnDelete(DeleteBehavior.Cascade);
+
+                entity.HasIndex(token => token.TokenHash).IsUnique();
+                entity.HasIndex(token => token.UserId);
+            });
         }
     }
 }

@@ -36,7 +36,11 @@ jobs:
         run: dotnet restore backend/MovieFlix.sln
 
       - name: Build
-        run: dotnet build backend/MovieFlix.sln --configuration Release --no-restore
+        run: >-
+          dotnet build backend/MovieFlix.sln
+          --configuration Release
+          --no-restore
+          -warnaserror
 
       # The integration tests run against an isolated in-memory SQLite
       # database in the `Testing` environment (appsettings.Testing.json), so

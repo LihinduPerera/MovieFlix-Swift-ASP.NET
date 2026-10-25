@@ -1,97 +1,124 @@
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using MovieFlix.Api.DTOs.Common;
 using MovieFlix.Api.DTOs.History;
+using MovieFlix.Api.DTOs.Media;
+using MovieFlix.Api.Models;
 using MovieFlix.Api.Services;
 
 namespace MovieFlix.Api.Controllers
 {
     [ApiController]
     [ApiVersion("1.0")]
-    [Route("api/v1/[controller]")]
-    public class HistoryController : ControllerBase
+    [Route("api/v1/me/history")]
+    [Authorize]
+    public class HistoryController : ApiControllerBase
     {
         private readonly IWatchHistoryService _historyService;
-        private readonly ICurrentUserService _currentUser;
 
-        public HistoryController(
-            IWatchHistoryService historyService,
-            ICurrentUserService currentUser)
+        public HistoryController(IWatchHistoryService historyService)
         {
             _historyService = historyService;
-            _currentUser = currentUser;
         }
 
-        /// <summary>Records or updates playback progress for a movie.</summary>
-        [Authorize]
-        [HttpPut("/api/v1/me/history/{movieId:int}")]
-        public async Task<IActionResult> RecordProgress(
-            int movieId, RecordProgressRequest request)
+        [HttpGet]
+        public async Task<ActionResult<PagedResponse<WatchHistoryItemResponse>>> Get(
+            [FromQuery] HistoryListQueryRequest request,
+            CancellationToken cancellationToken)
         {
-            var result = await _historyService.RecordProgressAsync(
-                _currentUser.UserId,
-                movieId,
-                request.ProgressSeconds,
-                request.Completed);
-
-            if (result is null)
-            {
-                return NotFound();
-            }
-
-            return Ok(result);
+            return Ok(await _historyService.GetHistoryAsync(
+                RequireUserId(),
+                request.MediaType,
+                request.Page,
+                request.PageSize,
+                cancellationToken));
         }
 
-        /// <summary>Recently watched movies, newest first (paginated).</summary>
-        [Authorize]
-        [HttpGet("/api/v1/me/history")]
-        public async Task<IActionResult> GetRecentlyWatched(
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 20)
+        /// <summary>Unfinished movies and TV shows, newest first.</summary>
+        [HttpGet("continue")]
+        public async Task<ActionResult<List<WatchHistoryItemResponse>>> Continue(
+            [FromQuery] ContinueWatchingQueryRequest request,
+            CancellationToken cancellationToken)
         {
-            if (page < 1) page = 1;
-            if (pageSize < 1) pageSize = 1;
-            if (pageSize > 100) pageSize = 100;
-
-            var result = await _historyService.GetRecentlyWatchedAsync(
-                _currentUser.UserId, page, pageSize);
-
-            return Ok(result);
+            return Ok(await _historyService.GetContinueWatchingAsync(
+                RequireUserId(),
+                request.Limit,
+                cancellationToken));
         }
 
-        /// <summary>Started-but-unfinished movies for the Continue Watching rail.</summary>
-        [Authorize]
-        [HttpGet("/api/v1/me/history/continue")]
-        public async Task<IActionResult> GetContinueWatching()
+        /// <summary>Tracked episode states for one TV show.</summary>
+        [HttpGet("tv/{tmdbId:int}")]
+        public async Task<ActionResult<TvHistoryResponse>> GetTvHistory(
+            int tmdbId,
+            CancellationToken cancellationToken)
         {
-            var result = await _historyService.GetContinueWatchingAsync(
-                _currentUser.UserId);
+            var history = await _historyService.GetTvHistoryAsync(
+                RequireUserId(),
+                tmdbId,
+                cancellationToken);
 
-            return Ok(result);
+            return history is null
+                ? NotFoundProblem(
+                    $"No watch history exists for TV show {tmdbId}.")
+                : Ok(history);
         }
 
-        /// <summary>Removes a single movie from the user's history.</summary>
-        [Authorize]
-        [HttpDelete("/api/v1/me/history/{movieId:int}")]
-        public async Task<IActionResult> Remove(int movieId)
+        /// <summary>Records progress for a movie, or for a TV show's current episode.</summary>
+        [HttpPut("{mediaType:mediaType}/{tmdbId:int}")]
+        public async Task<ActionResult<WatchHistoryItemResponse>> RecordProgress(
+            MediaType mediaType,
+            int tmdbId,
+            [FromBody] RecordProgressRequest request,
+            CancellationToken cancellationToken)
         {
-            var removed = await _historyService.RemoveAsync(
-                _currentUser.UserId, movieId);
+            return Ok(await _historyService.RecordProgressAsync(
+                RequireUserId(),
+                mediaType,
+                tmdbId,
+                request,
+                cancellationToken));
+        }
 
-            if (!removed)
-            {
-                return NotFound();
-            }
+        /// <summary>Records progress for one TV episode.</summary>
+        [HttpPut("tv/{tmdbId:int}/episodes/{seasonNumber:int}/{episodeNumber:int}")]
+        public async Task<ActionResult<EpisodeProgressResponse>> RecordEpisodeProgress(
+            int tmdbId,
+            int seasonNumber,
+            int episodeNumber,
+            [FromBody] RecordEpisodeProgressRequest request,
+            CancellationToken cancellationToken)
+        {
+            return Ok(await _historyService.RecordEpisodeProgressAsync(
+                RequireUserId(),
+                tmdbId,
+                seasonNumber,
+                episodeNumber,
+                request,
+                cancellationToken));
+        }
+
+        [HttpDelete("{mediaType:mediaType}/{tmdbId:int}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> Remove(
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken)
+        {
+            await _historyService.RemoveAsync(
+                RequireUserId(),
+                mediaType,
+                tmdbId,
+                cancellationToken);
 
             return NoContent();
         }
 
-        /// <summary>Clears the user's entire watch history.</summary>
-        [Authorize]
-        [HttpDelete("/api/v1/me/history")]
-        public async Task<IActionResult> Clear()
+        [HttpDelete]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> Clear(CancellationToken cancellationToken)
         {
-            await _historyService.ClearAsync(_currentUser.UserId);
+            await _historyService.ClearAsync(RequireUserId(), cancellationToken);
             return NoContent();
         }
     }
