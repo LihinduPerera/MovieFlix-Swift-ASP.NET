@@ -216,6 +216,7 @@ final class MediaDetailViewModel {
             } else {
                 try await libraryRepository.removeFavorite(mediaID)
             }
+            NotificationCenter.default.post(name: .libraryDidChange, object: nil)
             return nil
         } catch {
             state = current
@@ -239,6 +240,7 @@ final class MediaDetailViewModel {
             } else {
                 try await libraryRepository.removeFromWatchlist(mediaID)
             }
+            NotificationCenter.default.post(name: .libraryDidChange, object: nil)
             return nil
         } catch {
             state = current

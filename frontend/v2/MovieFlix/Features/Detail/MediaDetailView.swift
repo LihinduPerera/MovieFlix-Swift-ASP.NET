@@ -154,12 +154,33 @@ struct MediaDetailView: View {
                     url: container.images.url(for: details.backdropPath, size: .backdropLarge),
                     label: "\(details.title) backdrop"
                 )
-                .frame(height: 300)
+                .frame(height: 340)
                 .frame(maxWidth: .infinity)
                 .clipped()
 
-                MFColor.heroScrim
-                    .allowsHitTesting(false)
+                LinearGradient(
+                    colors: [
+                        Color.black.opacity(0.6),
+                        .clear
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 120)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .allowsHitTesting(false)
+
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.0),
+                        .init(color: Color.black.opacity(0.4), location: 0.5),
+                        .init(color: Color.black.opacity(0.9), location: 0.85),
+                        .init(color: Color.black, location: 1.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .allowsHitTesting(false)
             }
 
             HStack(alignment: .top, spacing: MFSpace.md) {
@@ -178,6 +199,8 @@ struct MediaDetailView: View {
                 VStack(alignment: .leading, spacing: MFSpace.xs) {
                     Text(details.title)
                         .mfText(.heroTitle)
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.85), radius: 4, x: 0, y: 1)
                         .lineLimit(3)
                         .minimumScaleFactor(0.8)
                         .accessibilityAddTraits(.isHeader)
@@ -186,19 +209,21 @@ struct MediaDetailView: View {
                         Text(tagline)
                             .mfText(.callout)
                             .italic()
-                            .foregroundStyle(MFColor.textSecondary)
+                            .foregroundStyle(.white.opacity(0.95))
+                            .shadow(color: .black.opacity(0.8), radius: 3, x: 0, y: 1)
                             .lineLimit(2)
                     }
 
                     if let releaseLabel {
                         Text(releaseLabel)
                             .mfText(.caption)
-                            .foregroundStyle(MFColor.textTertiary)
+                            .foregroundStyle(.white.opacity(0.9))
+                            .shadow(color: .black.opacity(0.75), radius: 2, x: 0, y: 1)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.top, -72)
+            .padding(.top, -90)
             .padding(.horizontal, MFSpace.lg)
 
             metadataRow(details)

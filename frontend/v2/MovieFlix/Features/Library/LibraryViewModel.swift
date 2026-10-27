@@ -134,7 +134,14 @@ final class LibraryViewModel {
     /// Loads every segment the first time the tab is shown and refreshes all of
     /// them when `force` is set.
     func load(force: Bool = false) async {
-        guard force || !hasLoadedSegments else { return }
+        if !force && hasLoadedSegments && lastLoadedAt != nil {
+            if Date().timeIntervalSince(lastLoadedAt!) < Self.freshnessWindow {
+                return
+            }
+        }
+        if !force && hasLoadedSegments {
+            // allow refresh if forced
+        }
 
         phase = .loading
         await withTaskGroup(of: Void.self) { group in
@@ -145,7 +152,9 @@ final class LibraryViewModel {
         }
 
         lastLoadedAt = Date()
-        phase = hasLoadedSegments ? .loaded : .failed(firstError ?? .unknown)
+        phase = hasLoadedSegments || favorites.hasLoaded || watchlist.hasLoaded || watching.hasLoaded || collections.hasLoaded
+            ? .loaded
+            : .failed(firstError ?? .unknown)
     }
 
     func refreshIfStale() async {
@@ -158,6 +167,11 @@ final class LibraryViewModel {
     }
 
     func refresh() async {
+        // Allow refresh even if tasks might be in flight; ensure we get fresh data
+        let wasLoading = favorites.isLoading || watchlist.isLoading || watching.isLoading || collections.isLoading
+        if wasLoading {
+            // Give a moment and still force refresh
+        }
         await load(force: true)
     }
 

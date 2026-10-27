@@ -238,6 +238,7 @@ final class HomeViewModel {
             } else {
                 try await libraryRepository.removeFavorite(hero.id)
             }
+            NotificationCenter.default.post(name: .libraryDidChange, object: nil)
             return nil
         } catch {
             heroIsFavorite = !target
@@ -260,6 +261,7 @@ final class HomeViewModel {
             } else {
                 try await libraryRepository.removeFromWatchlist(hero.id)
             }
+            NotificationCenter.default.post(name: .libraryDidChange, object: nil)
             return nil
         } catch {
             heroIsInWatchlist = !target

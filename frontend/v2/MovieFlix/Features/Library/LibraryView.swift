@@ -54,9 +54,18 @@ struct LibraryView: View {
                 guard session.isSignedIn else { return }
                 Task { await viewModel.refreshIfStale() }
             }
+            .onReceive(NotificationCenter.default.publisher(for: .libraryDidChange)) { _ in
+                guard session.isSignedIn else { return }
+                Task { await viewModel.refresh() }
+            }
             .onChange(of: path) { _, newPath in
                 guard newPath.isEmpty, session.isSignedIn else { return }
                 Task { await viewModel.refresh() }
+            }
+            .onChange(of: container.navigation.selectedTab) { _, tab in
+                if tab == .library, session.isSignedIn {
+                    Task { await viewModel.refresh() }
+                }
             }
             .navigationDestination(for: AppRoute.self) { route in
                 destination(for: route)

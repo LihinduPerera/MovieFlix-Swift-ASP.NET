@@ -39,9 +39,18 @@ struct HomeView: View {
                 .refreshable {
                     await viewModel.load(force: true)
                 }
-                .overlay(alignment: .top) {
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    // Extend the chrome into the top safe area so the gradient
+                    // starts at the screen edge, while the bar content stays
+                    // below the status bar.
                     topBar
+                        .padding(.top, 4)
+                        .padding(.bottom, 6)
                         .padding(.top, proxy.safeAreaInsets.top)
+                        .background {
+                            topBarBackground(topInset: proxy.safeAreaInsets.top)
+                        }
+                        .ignoresSafeArea(edges: .top)
                 }
                 .toolbar(.hidden, for: .navigationBar)
                 .navigationDestination(for: AppRoute.self) { route in
@@ -170,7 +179,7 @@ struct HomeView: View {
 
     private var topBar: some View {
         HStack(spacing: MFSpace.sm) {
-            MFLogo(size: 17, showsMark: true)
+            MFLogo(size: 19, showsMark: true)
 
             Spacer(minLength: MFSpace.sm)
 
@@ -182,30 +191,50 @@ struct HomeView: View {
                 }
             } label: {
                 if let user = container.session.user {
-                    MFAvatar(initials: user.initials, size: 32)
+                    MFAvatar(initials: user.initials, size: 36)
                         .contentShape(Circle())
                 } else {
-                    Image(systemName: "person.crop.circle")
-                        .font(.system(size: 26, weight: .regular))
-                        .frame(width: MFSize.avatar + 4, height: MFSize.avatar + 4)
+                    Image(systemName: "person.crop.circle.fill")
+                        .font(.system(size: 30, weight: .regular))
+                        .foregroundStyle(.white)
+                        .frame(width: MFSize.avatar + 8, height: MFSize.avatar + 8)
+                        .background(
+                            Circle()
+                                .fill(.ultraThinMaterial)
+                        )
+                        .overlay(
+                            Circle()
+                                .strokeBorder(.white.opacity(0.35), lineWidth: 1)
+                        )
                         .contentShape(Circle())
                 }
             }
             .buttonStyle(.plain)
             .accessibilityLabel(container.session.isSignedIn ? "Open profile" : "Sign in")
         }
-        .foregroundStyle(MFColor.textPrimary)
+        .foregroundStyle(.white)
         .padding(.horizontal, MFSpace.lg)
-        .padding(.bottom, MFSpace.xxs)
-        .background {
+        .padding(.top, 2)
+        .padding(.bottom, 12)
+    }
+
+    private func topBarBackground(topInset: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Color.black.opacity(0.9)
+                .frame(height: topInset)
+
             LinearGradient(
-                colors: [.black.opacity(0.62), .black.opacity(0.18), .clear],
+                colors: [
+                    Color.black.opacity(0.9),
+                    Color.black.opacity(0.55),
+                    Color.black.opacity(0.2),
+                    .clear
+                ],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .ignoresSafeArea(edges: .top)
-            .allowsHitTesting(false)
         }
+        .allowsHitTesting(false)
     }
 
     // MARK: Navigation
