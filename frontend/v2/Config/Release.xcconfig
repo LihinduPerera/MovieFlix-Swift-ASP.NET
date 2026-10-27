@@ -1,0 +1,8 @@
+#include "Base.xcconfig"
+
+// Replace this with the production API endpoint before shipping.
+API_BASE_URL = https:/$()/api.movieflix.example
+TMDB_IMAGE_BASE_URL = https:/$()/image.tmdb.org/t/p
+
+// Optional local override (git-ignored). Keep this last so it wins.
+#include? "Local.xcconfig"
