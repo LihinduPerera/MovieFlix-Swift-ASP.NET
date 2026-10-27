@@ -2,78 +2,87 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MovieFlix.Api.DTOs.SearchHistory;
+using MovieFlix.Api.Exceptions;
 using MovieFlix.Api.Services;
 
 namespace MovieFlix.Api.Controllers
 {
     [ApiController]
     [ApiVersion("1.0")]
-    [Route("api/v1/[controller]")]
-    public class SearchHistoryController : ControllerBase
+    [Route("api/v1/me/search-history")]
+    [Authorize]
+    public class SearchHistoryController : ApiControllerBase
     {
         private readonly ISearchHistoryService _searchHistoryService;
-        private readonly ICurrentUserService _currentUser;
 
-        public SearchHistoryController(
-            ISearchHistoryService searchHistoryService,
-            ICurrentUserService currentUser)
+        public SearchHistoryController(ISearchHistoryService searchHistoryService)
         {
             _searchHistoryService = searchHistoryService;
-            _currentUser = currentUser;
         }
 
-        /// <summary>Records a search term for the current user.</summary>
-        [Authorize]
-        [HttpPost("/api/v1/me/search-history")]
-        public async Task<IActionResult> Record(RecordSearchRequest request)
+        [HttpGet]
+        public async Task<ActionResult<List<SearchHistoryResponse>>> Get(
+            [FromQuery] int limit,
+            CancellationToken cancellationToken)
         {
-            var result = await _searchHistoryService.RecordAsync(
-                _currentUser.UserId, request.Query);
+            return Ok(await _searchHistoryService.GetRecentAsync(
+                RequireUserId(),
+                limit <= 0 ? 10 : limit,
+                cancellationToken));
+        }
 
-            if (result is null)
+        [HttpPost]
+        public async Task<ActionResult<SearchHistoryResponse>> Record(
+            [FromBody] RecordSearchRequest request,
+            CancellationToken cancellationToken)
+        {
+            var entry = await _searchHistoryService.RecordAsync(
+                RequireUserId(),
+                request.Query,
+                cancellationToken);
+
+            if (entry is null)
             {
-                return BadRequest("Search query must not be empty.");
+                return ValidationProblem(
+                    new ValidationProblemDetails(
+                        new Dictionary<string, string[]>
+                        {
+                            ["Query"] = ["Query must not be empty."]
+                        })
+                    {
+                        Type = ProblemTypes.Validation,
+                        Title = "One or more validation errors occurred.",
+                        Status = StatusCodes.Status400BadRequest
+                    });
             }
 
-            return Ok(result);
+            return Ok(entry);
         }
 
-        /// <summary>Recent distinct search terms (newest first).</summary>
-        [Authorize]
-        [HttpGet("/api/v1/me/search-history")]
-        public async Task<IActionResult> GetRecent([FromQuery] int limit = 10)
-        {
-            if (limit < 1) limit = 1;
-            if (limit > 50) limit = 50;
-
-            var result = await _searchHistoryService.GetRecentAsync(
-                _currentUser.UserId, limit);
-
-            return Ok(result);
-        }
-
-        /// <summary>Removes a single search-history entry.</summary>
-        [Authorize]
-        [HttpDelete("/api/v1/me/search-history/{entryId:int}")]
-        public async Task<IActionResult> Remove(int entryId)
+        [HttpDelete("{entryId:int}")]
+        public async Task<IActionResult> Remove(
+            int entryId,
+            CancellationToken cancellationToken)
         {
             var removed = await _searchHistoryService.RemoveAsync(
-                _currentUser.UserId, entryId);
+                RequireUserId(),
+                entryId,
+                cancellationToken);
 
-            if (!removed)
-            {
-                return NotFound();
-            }
-
-            return NoContent();
+            return removed
+                ? NoContent()
+                : NotFoundProblem(
+                    $"Search history entry {entryId} was not found.");
         }
 
-        /// <summary>Clears the user's entire search history.</summary>
-        [Authorize]
-        [HttpDelete("/api/v1/me/search-history")]
-        public async Task<IActionResult> Clear()
+        [HttpDelete]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> Clear(CancellationToken cancellationToken)
         {
-            await _searchHistoryService.ClearAsync(_currentUser.UserId);
+            await _searchHistoryService.ClearAsync(
+                RequireUserId(),
+                cancellationToken);
+
             return NoContent();
         }
     }

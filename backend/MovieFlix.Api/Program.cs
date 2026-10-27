@@ -1,23 +1,32 @@
+using System.Net;
+using System.Reflection;
+using System.Security.Claims;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading.RateLimiting;
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Microsoft.OpenApi;
 using MovieFlix.Api.Configuration;
 using MovieFlix.Api.Data;
 using MovieFlix.Api.Exceptions;
 using MovieFlix.Api.Models;
 using MovieFlix.Api.Services;
+using MovieFlix.Api.Swagger;
 using Polly;
 using Serilog;
-using System.Security.Claims;
-using System.Text;
-using System.Threading.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Structured logging via Serilog (configured from the "Serilog" config section).
 builder.Host.UseSerilog((context, services, configuration) =>
 {
     configuration
@@ -25,46 +34,22 @@ builder.Host.UseSerilog((context, services, configuration) =>
         .ReadFrom.Services(services)
         .Enrich.FromLogContext();
 
-    // Keep test output clean: only warnings and above while testing.
     if (context.HostingEnvironment.IsEnvironment("Testing"))
     {
         configuration.MinimumLevel.Warning();
     }
 });
 
-builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSingleton(TimeProvider.System);
 
-builder.Services.AddSwaggerGen(options =>
-{
-    // 1. Tell Swagger that our API uses JWT Bearer authentication.
-    options.AddSecurityDefinition("Bearer", new Microsoft.OpenApi.OpenApiSecurityScheme
+builder.Services
+    .AddControllers()
+    .AddJsonOptions(options =>
     {
-        Name = "Authorization",
-        Type = Microsoft.OpenApi.SecuritySchemeType.Http,
-        Scheme = "bearer",
-        BearerFormat = "JWT",
-        In = Microsoft.OpenApi.ParameterLocation.Header,
-        Description = "Enter your JWT access token here."
+        options.JsonSerializerOptions.Converters.Add(
+            new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
     });
 
-    // 2. Tell Swagger to send the token with API requests.
-    options.AddSecurityRequirement(document => new Microsoft.OpenApi.OpenApiSecurityRequirement
-    {
-        {
-            new Microsoft.OpenApi.OpenApiSecuritySchemeReference(
-                "Bearer",
-                document),
-            new List<string>()
-        }
-    });
-});
-
-builder.Services.AddControllers();
-
-// API versioning: controllers declare [ApiVersion("1.0")] and the API reports
-// the supported versions via the api-supported-versions response header. The
-// URL contract (/api/v1/...) is kept stable. AddMvc() wires the versioning
-// integration into MVC.
 builder.Services
     .AddApiVersioning(options =>
     {
@@ -74,8 +59,6 @@ builder.Services
     })
     .AddMvc();
 
-// CORS: allowed browser origins are configured (empty by default). Native
-// clients are unaffected; this is for a future web front-end.
 var allowedOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
     .Get<string[]>() ?? [];
@@ -94,9 +77,13 @@ builder.Services.AddCors(options =>
     });
 });
 
-// Rate limiting: a global per-client limit plus a stricter "auth" policy for
-// credential endpoints to slow down brute-force attempts. Limits are
-// configurable via the "RateLimiting" section.
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+    options.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
+        ["application/json", "application/problem+json"]);
+});
+
 var rateLimiting = builder.Configuration
     .GetSection("RateLimiting")
     .Get<RateLimitingSettings>() ?? new RateLimitingSettings();
@@ -119,7 +106,8 @@ builder.Services.AddRateLimiter(options =>
                 {
                     PermitLimit = rateLimiting.GlobalPermitLimit,
                     Window = TimeSpan.FromSeconds(rateLimiting.GlobalWindowSeconds),
-                    QueueLimit = 0
+                    QueueLimit = 0,
+                    AutoReplenishment = true
                 });
         });
 
@@ -133,25 +121,74 @@ builder.Services.AddRateLimiter(options =>
             {
                 PermitLimit = rateLimiting.AuthPermitLimit,
                 Window = TimeSpan.FromSeconds(rateLimiting.AuthWindowSeconds),
-                QueueLimit = 0
+                QueueLimit = 0,
+                AutoReplenishment = true
             });
     });
+
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        var httpContext = context.HttpContext;
+
+        var retryAfter = TimeSpan.FromSeconds(
+            Math.Max(1, rateLimiting.GlobalWindowSeconds));
+
+        if (context.Lease.TryGetMetadata(
+            MetadataName.RetryAfter,
+            out var leaseRetryAfter))
+        {
+            retryAfter = leaseRetryAfter;
+        }
+
+        httpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        httpContext.Response.Headers.RetryAfter =
+            Math.Ceiling(retryAfter.TotalSeconds).ToString(
+                System.Globalization.CultureInfo.InvariantCulture);
+
+        var logger = httpContext.RequestServices
+            .GetRequiredService<ILoggerFactory>()
+            .CreateLogger("RateLimiting");
+
+        logger.LogWarning(
+            "Rate limit exceeded for {Method} {Path} from {RemoteIp}. TraceId: {TraceId}",
+            httpContext.Request.Method,
+            httpContext.Request.Path,
+            httpContext.Connection.RemoteIpAddress,
+            httpContext.TraceIdentifier);
+
+        var problem = new ProblemDetails
+        {
+            Type = ProblemTypes.RateLimited,
+            Title = "Too many requests.",
+            Status = StatusCodes.Status429TooManyRequests,
+            Detail = "The request rate limit was exceeded. Retry later."
+        };
+
+        problem.Extensions["traceId"] = httpContext.TraceIdentifier;
+
+        httpContext.Response.ContentType = "application/problem+json";
+        await httpContext.Response.WriteAsJsonAsync(
+            problem,
+            options: null,
+            contentType: "application/problem+json",
+            cancellationToken);
+    };
 });
 
 builder.Services.AddHealthChecks()
     .AddDbContextCheck<MovieFlixDbContext>("database");
 
-// The database provider is selectable via configuration so the same codebase
-// can run on SQLite (default; used locally and in tests) or PostgreSQL in a
-// deployed environment. Set Database:Provider to "Postgres" and provide the
-// ConnectionStrings:Postgres connection string to switch.
 var databaseProvider = builder.Configuration["Database:Provider"] ?? "Sqlite";
 
 builder.Services.AddDbContext<MovieFlixDbContext>(options =>
 {
-    if (string.Equals(databaseProvider, "Postgres", StringComparison.OrdinalIgnoreCase))
+    if (string.Equals(
+        databaseProvider,
+        "Postgres",
+        StringComparison.OrdinalIgnoreCase))
     {
-        var postgresConnection = builder.Configuration.GetConnectionString("Postgres")
+        var postgresConnection = builder.Configuration
+            .GetConnectionString("Postgres")
             ?? throw new InvalidOperationException(
                 "Connection string 'Postgres' is required when Database:Provider is 'Postgres'.");
 
@@ -164,13 +201,11 @@ builder.Services.AddDbContext<MovieFlixDbContext>(options =>
             ?? "Data Source=MovieFlix.db");
     }
 
-    // For development
     if (builder.Environment.IsDevelopment())
     {
         options
             .EnableDetailedErrors()
-            .EnableSensitiveDataLogging()
-            .LogTo(Console.WriteLine);
+            .EnableSensitiveDataLogging();
     }
 });
 
@@ -179,24 +214,18 @@ builder.Services.AddHttpContextAccessor();
 builder.Services
     .AddHttpClient<ITmdbService, TmdbService>(client =>
     {
-        // Timeouts are enforced by the resilience pipeline below (attempt +
-        // total), so the HttpClient-level timeout is disabled to avoid it
-        // preempting the pipeline.
         client.Timeout = Timeout.InfiniteTimeSpan;
     })
     .AddStandardResilienceHandler(options =>
     {
-        // Retry transient failures with exponential backoff + jitter.
         options.Retry.MaxRetryAttempts = 3;
         options.Retry.Delay = TimeSpan.FromMilliseconds(200);
         options.Retry.BackoffType = DelayBackoffType.Exponential;
         options.Retry.UseJitter = true;
 
-        // Per-attempt and whole-request timeouts.
         options.AttemptTimeout.Timeout = TimeSpan.FromSeconds(5);
         options.TotalRequestTimeout.Timeout = TimeSpan.FromSeconds(20);
 
-        // Circuit breaker: stop hammering TMDB while it is unhealthy.
         options.CircuitBreaker.FailureRatio = 0.5;
         options.CircuitBreaker.MinimumThroughput = 5;
         options.CircuitBreaker.SamplingDuration = TimeSpan.FromSeconds(30);
@@ -205,19 +234,48 @@ builder.Services
 
 builder.Services.AddOutputCache(options =>
 {
-    // Cache expensive TMDB-backed GET responses. A distributed cache can be
-    // swapped in later (e.g. Redis) without changing these policies.
     options.AddPolicy("tmdb-search", policy => policy
         .Expire(TimeSpan.FromMinutes(5))
-        .SetVaryByQuery("query", "page"));
+        .SetVaryByQuery("query", "type", "page", "language", "region"));
+
+    options.AddPolicy("tmdb-trending", policy => policy
+        .Expire(TimeSpan.FromMinutes(10))
+        .SetVaryByQuery("mediaType", "window", "page", "language"));
+
+    options.AddPolicy("tmdb-feed", policy => policy
+        .Expire(TimeSpan.FromMinutes(10))
+        .SetVaryByQuery("page", "language", "region"));
+
+    options.AddPolicy("tmdb-discover", policy => policy
+        .Expire(TimeSpan.FromMinutes(10))
+        .SetVaryByQuery(
+            "genreId",
+            "year",
+            "minRating",
+            "sortBy",
+            "page",
+            "language",
+            "region"));
 
     options.AddPolicy("tmdb-details", policy => policy
         .Expire(TimeSpan.FromHours(1))
-        .SetVaryByRouteValue("tmdbId"));
+        .SetVaryByRouteValue("mediaType", "tmdbId")
+        .SetVaryByQuery("language"));
+
+    options.AddPolicy("tmdb-season", policy => policy
+        .Expire(TimeSpan.FromHours(6))
+        .SetVaryByRouteValue("tmdbId")
+        .SetVaryByQuery("language"));
+
+    options.AddPolicy("tmdb-genres", policy => policy
+        .Expire(TimeSpan.FromHours(24))
+        .SetVaryByRouteValue("mediaType")
+        .SetVaryByQuery("language"));
 });
 
-builder.Services.AddScoped<IMovieService, MovieService>();
-builder.Services.AddScoped<IMovieCacheService, MovieCacheService>();
+builder.Services.AddScoped<IMediaCacheService, MediaCacheService>();
+builder.Services.AddScoped<IMediaService, MediaService>();
+builder.Services.AddScoped<ITvProgressService, TvProgressService>();
 builder.Services.AddScoped<IFavoriteService, FavoriteService>();
 builder.Services.AddScoped<IWatchlistService, WatchlistService>();
 builder.Services.AddScoped<IRatingService, RatingService>();
@@ -226,6 +284,7 @@ builder.Services.AddScoped<IReviewService, ReviewService>();
 builder.Services.AddScoped<ICollectionService, CollectionService>();
 builder.Services.AddScoped<ISearchHistoryService, SearchHistoryService>();
 builder.Services.AddScoped<IPreferencesService, PreferencesService>();
+builder.Services.AddScoped<IProfileService, ProfileService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IJwtService, JwtService>();
 builder.Services.AddScoped<IRefreshTokenService, RefreshTokenService>();
@@ -238,7 +297,7 @@ builder.Services.Configure<TmdbWarmupSettings>(
 builder.Services.Configure<JwtSettings>(
     builder.Configuration.GetSection("Jwt"));
 
-builder.Services.AddHostedService<MovieCacheWarmupService>();
+builder.Services.AddHostedService<MediaCacheWarmupService>();
 
 builder.Services
     .AddIdentityCore<ApplicationUser>(options =>
@@ -251,7 +310,7 @@ builder.Services
         options.User.RequireUniqueEmail = true;
         options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
         options.Lockout.MaxFailedAccessAttempts = 5;
-        options.Lockout.AllowedForNewUsers = false;
+        options.Lockout.AllowedForNewUsers = true;
     })
     .AddRoles<IdentityRole>()
     .AddEntityFrameworkStores<MovieFlixDbContext>()
@@ -270,46 +329,185 @@ builder.Services
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
             ClockSkew = TimeSpan.FromSeconds(30),
-
             ValidIssuer = jwtSettings["Issuer"],
             ValidAudience = jwtSettings["Audience"],
-
             IssuerSigningKey = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(
-                    jwtSettings["Key"]!))
+                Encoding.UTF8.GetBytes(jwtSettings["Key"] ?? string.Empty))
+        };
+
+        options.Events = new JwtBearerEvents
+        {
+            OnChallenge = async context =>
+            {
+                context.HandleResponse();
+
+                if (context.Response.HasStarted)
+                {
+                    return;
+                }
+
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/problem+json";
+
+                var problem = new ProblemDetails
+                {
+                    Type = ProblemTypes.Unauthorized,
+                    Title = "Unauthorized.",
+                    Status = StatusCodes.Status401Unauthorized,
+                    Detail = "A valid bearer token is required."
+                };
+
+                problem.Extensions["traceId"] =
+                    context.HttpContext.TraceIdentifier;
+
+                await context.Response.WriteAsJsonAsync(
+                    problem,
+                    options: null,
+                    contentType: "application/problem+json",
+                    context.HttpContext.RequestAborted);
+            },
+            OnForbidden = async context =>
+            {
+                context.Response.StatusCode = StatusCodes.Status403Forbidden;
+                context.Response.ContentType = "application/problem+json";
+
+                var problem = new ProblemDetails
+                {
+                    Type = ProblemTypes.Forbidden,
+                    Title = "Forbidden.",
+                    Status = StatusCodes.Status403Forbidden,
+                    Detail = "You do not have access to this resource."
+                };
+
+                problem.Extensions["traceId"] =
+                    context.HttpContext.TraceIdentifier;
+
+                await context.Response.WriteAsJsonAsync(
+                    problem,
+                    options: null,
+                    contentType: "application/problem+json",
+                    context.HttpContext.RequestAborted);
+            }
         };
     });
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddEndpointsApiExplorer();
+
+builder.Services.AddSwaggerGen(options =>
+{
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "MovieFlix API",
+        Version = "v1",
+        Description =
+            "Unified movies and TV platform. Public titles are identified by " +
+            "`mediaType` (`movie` or `tv`) and TMDB id."
+    });
+
+    options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+    {
+        Name = "Authorization",
+        Type = SecuritySchemeType.Http,
+        Scheme = "bearer",
+        BearerFormat = "JWT",
+        In = ParameterLocation.Header,
+        Description = "Enter the JWT access token."
+    });
+
+    options.OperationFilter<AuthorizeCheckOperationFilter>();
+
+    var xmlFile = $"{Assembly.GetExecutingAssembly().GetName().Name}.xml";
+    var xmlPath = Path.Combine(AppContext.BaseDirectory, xmlFile);
+
+    if (File.Exists(xmlPath))
+    {
+        options.IncludeXmlComments(xmlPath, includeControllerXmlComments: true);
+    }
+});
+
+var forwardedSettings = builder.Configuration
+    .GetSection("ForwardedHeaders")
+    .Get<ForwardedHeadersSettings>() ?? new ForwardedHeadersSettings();
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders =
+        ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+
+    foreach (var proxy in forwardedSettings.KnownProxies)
+    {
+        if (IPAddress.TryParse(proxy, out var address))
+        {
+            options.KnownProxies.Add(address);
+        }
+    }
+
+    foreach (var network in forwardedSettings.KnownNetworks)
+    {
+        if (Microsoft.AspNetCore.HttpOverrides.IPNetwork.TryParse(
+            network,
+            out var parsedNetwork))
+        {
+            options.KnownNetworks.Add(parsedNetwork);
+        }
+    }
+});
+
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
-builder.Services.AddProblemDetails();
+
+builder.Services.AddProblemDetails(options =>
+{
+    options.CustomizeProblemDetails = context =>
+    {
+        context.ProblemDetails.Type ??=
+            ProblemTypes.ForStatus(context.ProblemDetails.Status);
+
+        context.ProblemDetails.Extensions.TryAdd(
+            "traceId",
+            context.HttpContext.TraceIdentifier);
+    };
+});
 
 var app = builder.Build();
+
+if (forwardedSettings.Enabled)
+{
+    app.UseForwardedHeaders();
+}
 
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+else
+{
+    app.UseHsts();
+}
 
 app.UseExceptionHandler();
-
 app.UseSerilogRequestLogging();
-
 app.UseHttpsRedirection();
-
+app.UseResponseCompression();
 app.UseCors("MovieFlixClient");
-
 app.UseAuthentication();
-
 app.UseAuthorization();
-
 app.UseRateLimiter();
-
 app.UseOutputCache();
 
 app.MapControllers();
+
+app.MapHealthChecks("/health/live", new HealthCheckOptions
+{
+    Predicate = _ => false
+});
+
+app.MapHealthChecks("/health/ready");
 
 app.MapHealthChecks("/health");
 

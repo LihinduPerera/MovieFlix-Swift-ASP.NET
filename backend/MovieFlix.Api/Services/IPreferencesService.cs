@@ -4,17 +4,13 @@ namespace MovieFlix.Api.Services
 {
     public interface IPreferencesService
     {
-        /// <summary>
-        /// Returns the user's preferences, creating a default row on first
-        /// access. Returns null when the user does not exist.
-        /// </summary>
-        Task<PreferencesResponse?> GetAsync(string userId);
+        Task<PreferencesResponse?> GetAsync(
+            string userId,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Updates the user's preferences (creating defaults first if needed).
-        /// Returns null when the user does not exist.
-        /// </summary>
         Task<PreferencesResponse?> UpdateAsync(
-            string userId, UpdatePreferencesRequest request);
+            string userId,
+            UpdatePreferencesRequest request,
+            CancellationToken cancellationToken = default);
     }
 }

@@ -4,6 +4,10 @@
     <TargetFramework>net9.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Docs feed Swagger. CS1591 is suppressed because most response DTO
+         properties are self-describing; controller actions are documented. -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <NoWarn>$(NoWarn);CS1591</NoWarn>
     <!-- Enables `dotnet user-secrets` so secrets stay OUT of source control. -->
     <UserSecretsId>movieflix-api-dev-secrets</UserSecretsId>
   </PropertyGroup>

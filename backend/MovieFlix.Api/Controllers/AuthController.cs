@@ -1,4 +1,4 @@
-﻿using Asp.Versioning;
+using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -9,69 +9,75 @@ namespace MovieFlix.Api.Controllers
 {
     [ApiController]
     [ApiVersion("1.0")]
-    [Route("api/v1/[controller]")]
-    public class AuthController : ControllerBase
+    [Route("api/v1/auth")]
+    [EnableRateLimiting("auth")]
+    public class AuthController : ApiControllerBase
     {
         private readonly IAuthService _authService;
-        private readonly ICurrentUserService _currentUser;
 
-        public AuthController(
-            IAuthService authService,
-            ICurrentUserService currentUser)
+        public AuthController(IAuthService authService)
         {
             _authService = authService;
-            _currentUser = currentUser;
         }
 
-        [EnableRateLimiting("auth")]
+        /// <summary>Registers an account and returns an initial token pair.</summary>
         [HttpPost("register")]
-        public async Task<IActionResult> Register(RegisterRequest request)
+        [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status400BadRequest)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<ActionResult<LoginResponse>> Register(
+            [FromBody] RegisterRequest request,
+            CancellationToken cancellationToken)
         {
-            await _authService.RegisterAsync(request);
+            var response = await _authService.RegisterAsync(
+                request,
+                cancellationToken);
 
-            return StatusCode(StatusCodes.Status201Created);
+            return StatusCode(StatusCodes.Status201Created, response);
         }
 
-        [EnableRateLimiting("auth")]
+        /// <summary>Exchanges email and password for an access + refresh token pair.</summary>
         [HttpPost("login")]
-        public async Task<IActionResult> Login(LoginRequest request)
+        [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        [ProducesResponseType(StatusCodes.Status423Locked)]
+        public async Task<ActionResult<LoginResponse>> Login(
+            [FromBody] LoginRequest request,
+            CancellationToken cancellationToken)
         {
-            var response = await _authService.LoginAsync(request);
+            var response = await _authService.LoginAsync(
+                request,
+                cancellationToken);
 
-            if (response is null)
-            {
-                return Unauthorized();
-            }
-
-            return Ok(response);
+            return response is null
+                ? UnauthorizedProblem("Email or password is incorrect.")
+                : Ok(response);
         }
 
-        /// <summary>
-        /// Exchanges a valid refresh token for a new access + refresh token pair.
-        /// </summary>
-        [EnableRateLimiting("auth")]
+        /// <summary>Rotates a refresh token and returns a new token pair.</summary>
         [HttpPost("refresh")]
-        public async Task<IActionResult> Refresh(RefreshRequest request)
+        [ProducesResponseType(typeof(LoginResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+        public async Task<ActionResult<LoginResponse>> Refresh(
+            [FromBody] RefreshRequest request,
+            CancellationToken cancellationToken)
         {
-            var response = await _authService.RefreshAsync(request);
+            var response = await _authService.RefreshAsync(
+                request,
+                cancellationToken);
 
-            if (response is null)
-            {
-                return Unauthorized();
-            }
-
-            return Ok(response);
+            return response is null
+                ? UnauthorizedProblem("Refresh token is invalid or expired.")
+                : Ok(response);
         }
 
-        /// <summary>
-        /// Logs the current user out by revoking all of their refresh tokens.
-        /// </summary>
-        [Authorize]
+        /// <summary>Revokes every active refresh token for the current user.</summary>
         [HttpPost("logout")]
-        public async Task<IActionResult> Logout()
+        [Authorize]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> Logout(CancellationToken cancellationToken)
         {
-            await _authService.LogoutAsync(_currentUser.UserId);
-
+            await _authService.LogoutAsync(RequireUserId(), cancellationToken);
             return NoContent();
         }
     }

@@ -1,29 +1,53 @@
 using MovieFlix.Api.DTOs.Common;
 using MovieFlix.Api.DTOs.History;
+using MovieFlix.Api.DTOs.Media;
+using MovieFlix.Api.Models;
 
 namespace MovieFlix.Api.Services
 {
+    /// <summary>Movie progress, per-episode tracking, history and continue watching.</summary>
     public interface IWatchHistoryService
     {
-        /// <summary>
-        /// Records (or updates) playback progress for a movie. Returns null
-        /// when the user or movie does not exist.
-        /// </summary>
-        Task<WatchHistoryResponse?> RecordProgressAsync(
-            string userId, int movieId, int progressSeconds, bool completed);
+        Task<WatchHistoryItemResponse> RecordProgressAsync(
+            string userId,
+            MediaType mediaType,
+            int tmdbId,
+            RecordProgressRequest request,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>Recently watched movies, newest first, paginated.</summary>
-        Task<PagedResponse<WatchHistoryResponse>> GetRecentlyWatchedAsync(
-            string userId, int page, int pageSize);
+        Task<EpisodeProgressResponse> RecordEpisodeProgressAsync(
+            string userId,
+            int tmdbId,
+            int seasonNumber,
+            int episodeNumber,
+            RecordEpisodeProgressRequest request,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Movies that are started but not finished, newest first, for the
-        /// "Continue Watching" rail.
-        /// </summary>
-        Task<List<WatchHistoryResponse>> GetContinueWatchingAsync(string userId);
+        Task<PagedResponse<WatchHistoryItemResponse>> GetHistoryAsync(
+            string userId,
+            MediaType? mediaType,
+            int page,
+            int pageSize,
+            CancellationToken cancellationToken = default);
 
-        Task<bool> RemoveAsync(string userId, int movieId);
+        Task<List<WatchHistoryItemResponse>> GetContinueWatchingAsync(
+            string userId,
+            int limit,
+            CancellationToken cancellationToken = default);
 
-        Task ClearAsync(string userId);
+        Task<TvHistoryResponse?> GetTvHistoryAsync(
+            string userId,
+            int tmdbId,
+            CancellationToken cancellationToken = default);
+
+        Task RemoveAsync(
+            string userId,
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken = default);
+
+        Task ClearAsync(
+            string userId,
+            CancellationToken cancellationToken = default);
     }
 }

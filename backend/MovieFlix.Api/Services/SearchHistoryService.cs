@@ -8,14 +8,20 @@ namespace MovieFlix.Api.Services
     public class SearchHistoryService : ISearchHistoryService
     {
         private readonly MovieFlixDbContext _context;
+        private readonly TimeProvider _timeProvider;
 
-        public SearchHistoryService(MovieFlixDbContext context)
+        public SearchHistoryService(
+            MovieFlixDbContext context,
+            TimeProvider timeProvider)
         {
             _context = context;
+            _timeProvider = timeProvider;
         }
 
         public async Task<SearchHistoryResponse?> RecordAsync(
-            string userId, string query)
+            string userId,
+            string query,
+            CancellationToken cancellationToken = default)
         {
             var trimmed = query.Trim();
 
@@ -26,7 +32,7 @@ namespace MovieFlix.Api.Services
 
             var userExists = await _context.Users
                 .AsNoTracking()
-                .AnyAsync(u => u.Id == userId);
+                .AnyAsync(user => user.Id == userId, cancellationToken);
 
             if (!userExists)
             {
@@ -34,10 +40,13 @@ namespace MovieFlix.Api.Services
             }
 
             var normalized = trimmed.ToUpperInvariant();
+            var now = _timeProvider.GetUtcNow().UtcDateTime;
 
             var existing = await _context.SearchHistoryEntries
-                .FirstOrDefaultAsync(e =>
-                    e.UserId == userId && e.NormalizedQuery == normalized);
+                .FirstOrDefaultAsync(
+                    entry => entry.UserId == userId
+                        && entry.NormalizedQuery == normalized,
+                    cancellationToken);
 
             if (existing is null)
             {
@@ -46,18 +55,18 @@ namespace MovieFlix.Api.Services
                     UserId = userId,
                     Query = trimmed,
                     NormalizedQuery = normalized,
-                    SearchedAt = DateTime.UtcNow
+                    SearchedAt = now
                 };
+
                 _context.SearchHistoryEntries.Add(existing);
             }
             else
             {
-                // Refresh casing + timestamp on repeat searches.
                 existing.Query = trimmed;
-                existing.SearchedAt = DateTime.UtcNow;
+                existing.SearchedAt = now;
             }
 
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
 
             return new SearchHistoryResponse
             {
@@ -67,28 +76,36 @@ namespace MovieFlix.Api.Services
             };
         }
 
-        public async Task<List<SearchHistoryResponse>> GetRecentAsync(
-            string userId, int limit)
+        public Task<List<SearchHistoryResponse>> GetRecentAsync(
+            string userId,
+            int limit,
+            CancellationToken cancellationToken = default)
         {
-            return await _context.SearchHistoryEntries
+            limit = Math.Clamp(limit, 1, 50);
+
+            return _context.SearchHistoryEntries
                 .AsNoTracking()
-                .Where(e => e.UserId == userId)
-                .OrderByDescending(e => e.SearchedAt)
+                .Where(entry => entry.UserId == userId)
+                .OrderByDescending(entry => entry.SearchedAt)
                 .Take(limit)
-                .Select(e => new SearchHistoryResponse
+                .Select(entry => new SearchHistoryResponse
                 {
-                    Id = e.Id,
-                    Query = e.Query,
-                    SearchedAt = e.SearchedAt
+                    Id = entry.Id,
+                    Query = entry.Query,
+                    SearchedAt = entry.SearchedAt
                 })
-                .ToListAsync();
+                .ToListAsync(cancellationToken);
         }
 
-        public async Task<bool> RemoveAsync(string userId, int entryId)
+        public async Task<bool> RemoveAsync(
+            string userId,
+            int entryId,
+            CancellationToken cancellationToken = default)
         {
             var entry = await _context.SearchHistoryEntries
-                .FirstOrDefaultAsync(e =>
-                    e.Id == entryId && e.UserId == userId);
+                .FirstOrDefaultAsync(
+                    item => item.Id == entryId && item.UserId == userId,
+                    cancellationToken);
 
             if (entry is null)
             {
@@ -96,23 +113,17 @@ namespace MovieFlix.Api.Services
             }
 
             _context.SearchHistoryEntries.Remove(entry);
-            await _context.SaveChangesAsync();
+            await _context.SaveChangesAsync(cancellationToken);
             return true;
         }
 
-        public async Task ClearAsync(string userId)
+        public async Task ClearAsync(
+            string userId,
+            CancellationToken cancellationToken = default)
         {
-            var entries = await _context.SearchHistoryEntries
-                .Where(e => e.UserId == userId)
-                .ToListAsync();
-
-            if (entries.Count == 0)
-            {
-                return;
-            }
-
-            _context.SearchHistoryEntries.RemoveRange(entries);
-            await _context.SaveChangesAsync();
+            await _context.SearchHistoryEntries
+                .Where(entry => entry.UserId == userId)
+                .ExecuteDeleteAsync(cancellationToken);
         }
     }
 }

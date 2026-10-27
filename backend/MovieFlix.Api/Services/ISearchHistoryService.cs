@@ -4,20 +4,23 @@ namespace MovieFlix.Api.Services
 {
     public interface ISearchHistoryService
     {
-        /// <summary>
-        /// Records a search term for the user. Repeat searches of the same term
-        /// (case-insensitive) refresh the existing entry rather than duplicate
-        /// it. Returns null when the user does not exist.
-        /// </summary>
-        Task<SearchHistoryResponse?> RecordAsync(string userId, string query);
+        Task<SearchHistoryResponse?> RecordAsync(
+            string userId,
+            string query,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>Most recent distinct search terms, newest first.</summary>
-        Task<List<SearchHistoryResponse>> GetRecentAsync(string userId, int limit);
+        Task<List<SearchHistoryResponse>> GetRecentAsync(
+            string userId,
+            int limit,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>Removes a single history entry. Returns false if not found.</summary>
-        Task<bool> RemoveAsync(string userId, int entryId);
+        Task<bool> RemoveAsync(
+            string userId,
+            int entryId,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>Removes all of the user's search history.</summary>
-        Task ClearAsync(string userId);
+        Task ClearAsync(
+            string userId,
+            CancellationToken cancellationToken = default);
     }
 }

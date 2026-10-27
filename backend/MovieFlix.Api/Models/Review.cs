@@ -1,12 +1,13 @@
 namespace MovieFlix.Api.Models;
 
+/// <summary>A user's review of a movie or TV show (one per user per title).</summary>
 public class Review
 {
     public int Id { get; set; }
 
     public string UserId { get; set; } = string.Empty;
 
-    public int MovieId { get; set; }
+    public int MediaItemId { get; set; }
 
     public string Content { get; set; } = string.Empty;
 
@@ -16,5 +17,5 @@ public class Review
 
     public ApplicationUser User { get; set; } = null!;
 
-    public Movie Movie { get; set; } = null!;
+    public MediaItem MediaItem { get; set; } = null!;
 }

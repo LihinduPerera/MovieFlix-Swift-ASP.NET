@@ -2,121 +2,131 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MovieFlix.Api.DTOs.Collections;
+using MovieFlix.Api.DTOs.Common;
+using MovieFlix.Api.DTOs.Media;
+using MovieFlix.Api.Models;
 using MovieFlix.Api.Services;
 
 namespace MovieFlix.Api.Controllers
 {
     [ApiController]
     [ApiVersion("1.0")]
-    [Route("api/v1/[controller]")]
-    public class CollectionsController : ControllerBase
+    [Route("api/v1")]
+    public class CollectionsController : ApiControllerBase
     {
         private readonly ICollectionService _collectionService;
-        private readonly ICurrentUserService _currentUser;
 
-        public CollectionsController(
-            ICollectionService collectionService,
-            ICurrentUserService currentUser)
+        public CollectionsController(ICollectionService collectionService)
         {
             _collectionService = collectionService;
-            _currentUser = currentUser;
         }
 
-        /// <summary>The current user's collections.</summary>
+        [HttpGet("me/collections")]
         [Authorize]
-        [HttpGet("/api/v1/me/collections")]
-        public async Task<IActionResult> GetMine()
+        public async Task<ActionResult<PagedResponse<CollectionSummaryResponse>>> GetMine(
+            [FromQuery] PagedQueryRequest request,
+            CancellationToken cancellationToken)
         {
-            var collections = await _collectionService
-                .GetUserCollectionsAsync(_currentUser.UserId);
-
-            return Ok(collections);
+            return Ok(await _collectionService.GetUserCollectionsAsync(
+                RequireUserId(),
+                request.Page,
+                request.PageSize,
+                cancellationToken));
         }
 
-        /// <summary>A collection with its movies (public read).</summary>
-        [HttpGet("/api/v1/collections/{collectionId:int}")]
-        public async Task<IActionResult> GetById(int collectionId)
+        /// <summary>Public collection detail. Private collections are still readable by id.</summary>
+        [HttpGet("collections/{collectionId:int}")]
+        public async Task<ActionResult<CollectionDetailResponse>> Get(
+            int collectionId,
+            CancellationToken cancellationToken)
         {
-            var collection = await _collectionService.GetByIdAsync(collectionId);
+            var collection = await _collectionService.GetByIdAsync(
+                collectionId,
+                CurrentUserId,
+                cancellationToken);
 
-            if (collection is null)
-            {
-                return NotFound();
-            }
-
-            return Ok(collection);
+            return collection is null
+                ? NotFoundProblem($"Collection {collectionId} was not found.")
+                : Ok(collection);
         }
 
+        [HttpPost("me/collections")]
         [Authorize]
-        [HttpPost("/api/v1/me/collections")]
-        public async Task<IActionResult> Create(CreateCollectionRequest request)
+        [ProducesResponseType(typeof(CollectionSummaryResponse), StatusCodes.Status201Created)]
+        [ProducesResponseType(StatusCodes.Status409Conflict)]
+        public async Task<ActionResult<CollectionSummaryResponse>> Create(
+            [FromBody] CreateCollectionRequest request,
+            CancellationToken cancellationToken)
         {
-            var created = await _collectionService.CreateAsync(
-                _currentUser.UserId, request.Name, request.Description);
+            var collection = await _collectionService.CreateAsync(
+                RequireUserId(),
+                request,
+                cancellationToken);
 
-            return CreatedAtAction(
-                nameof(GetById),
-                new { collectionId = created.Id },
-                created);
+            return Created($"/api/v1/collections/{collection.Id}", collection);
         }
 
+        [HttpPut("me/collections/{collectionId:int}")]
         [Authorize]
-        [HttpPut("/api/v1/me/collections/{collectionId:int}")]
-        public async Task<IActionResult> Update(
-            int collectionId, UpdateCollectionRequest request)
+        public async Task<ActionResult<CollectionSummaryResponse>> Update(
+            int collectionId,
+            [FromBody] UpdateCollectionRequest request,
+            CancellationToken cancellationToken)
         {
-            var updated = await _collectionService.UpdateAsync(
-                _currentUser.UserId, collectionId, request.Name, request.Description);
-
-            if (updated is null)
-            {
-                return NotFound();
-            }
-
-            return Ok(updated);
+            return Ok(await _collectionService.UpdateAsync(
+                RequireUserId(),
+                collectionId,
+                request,
+                cancellationToken));
         }
 
+        [HttpDelete("me/collections/{collectionId:int}")]
         [Authorize]
-        [HttpDelete("/api/v1/me/collections/{collectionId:int}")]
-        public async Task<IActionResult> Delete(int collectionId)
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> Delete(
+            int collectionId,
+            CancellationToken cancellationToken)
         {
-            var deleted = await _collectionService.DeleteAsync(
-                _currentUser.UserId, collectionId);
-
-            if (!deleted)
-            {
-                return NotFound();
-            }
+            await _collectionService.DeleteAsync(
+                RequireUserId(),
+                collectionId,
+                cancellationToken);
 
             return NoContent();
         }
 
+        /// <summary>Adds a title to a collection. Repeating the request is a no-op.</summary>
+        [HttpPut("me/collections/{collectionId:int}/items/{mediaType}/{tmdbId:int}")]
         [Authorize]
-        [HttpPost("/api/v1/me/collections/{collectionId:int}/movies/{movieId:int}")]
-        public async Task<IActionResult> AddMovie(int collectionId, int movieId)
+        public async Task<ActionResult<CollectionDetailResponse>> AddItem(
+            int collectionId,
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken)
         {
-            var result = await _collectionService.AddMovieAsync(
-                _currentUser.UserId, collectionId, movieId);
-
-            if (result is null)
-            {
-                return NotFound();
-            }
-
-            return Ok(result);
+            return Ok(await _collectionService.AddItemAsync(
+                RequireUserId(),
+                collectionId,
+                mediaType,
+                tmdbId,
+                cancellationToken));
         }
 
+        [HttpDelete("me/collections/{collectionId:int}/items/{mediaType}/{tmdbId:int}")]
         [Authorize]
-        [HttpDelete("/api/v1/me/collections/{collectionId:int}/movies/{movieId:int}")]
-        public async Task<IActionResult> RemoveMovie(int collectionId, int movieId)
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> RemoveItem(
+            int collectionId,
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken)
         {
-            var removed = await _collectionService.RemoveMovieAsync(
-                _currentUser.UserId, collectionId, movieId);
-
-            if (!removed)
-            {
-                return NotFound();
-            }
+            await _collectionService.RemoveItemAsync(
+                RequireUserId(),
+                collectionId,
+                mediaType,
+                tmdbId,
+                cancellationToken);
 
             return NoContent();
         }

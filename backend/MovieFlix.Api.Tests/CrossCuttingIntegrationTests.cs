@@ -1,105 +1,95 @@
 using System.Net;
 using System.Net.Http.Json;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
-using MovieFlix.Api.Data;
 
 namespace MovieFlix.Api.Tests;
 
-/// <summary>
-/// Integration tests covering the cross-cutting infrastructure added for
-/// production readiness: health checks and API version reporting.
-/// </summary>
-public class CrossCuttingIntegrationTests : IDisposable
+public sealed class CrossCuttingIntegrationTests : IntegrationTestBase
 {
-    private readonly MovieFlixApiFactory _factory;
-    private readonly HttpClient _client;
-
-    public CrossCuttingIntegrationTests()
+    public CrossCuttingIntegrationTests(MovieFlixApiFactory factory)
+        : base(factory)
     {
-        _factory = new MovieFlixApiFactory();
-        _client = _factory.CreateClient();
     }
 
-    public void Dispose()
+    [Theory]
+    [InlineData("/health/live")]
+    [InlineData("/health/ready")]
+    [InlineData("/health")]
+    public async Task HealthEndpoints_ReturnHealthy(string path)
     {
-        _client.Dispose();
-        _factory.Dispose();
-    }
+        using var client = Factory.CreateClient();
 
-    [Fact]
-    public async Task Health_WhenDatabaseIsReachable_ReturnsHealthy()
-    {
-        using var scope = _factory.Services.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<MovieFlixDbContext>();
-        await dbContext.Database.EnsureCreatedAsync();
-
-        var response = await _client.GetAsync("/health");
+        var response = await client.GetAsync(path);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         Assert.Equal("Healthy", await response.Content.ReadAsStringAsync());
     }
 
     [Fact]
-    public async Task VersionedEndpoint_AdvertisesSupportedApiVersions()
+    public async Task ApiVersion_IsReportedOnResponses()
     {
-        using var scope = _factory.Services.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<MovieFlixDbContext>();
-        await dbContext.Database.EnsureCreatedAsync();
+        using var client = Factory.CreateClient();
 
-        var movie = new MovieFlix.Api.Models.Movie
-        {
-            TmdbId = 157336,
-            Title = "Interstellar",
-            Overview = "Space."
-        };
-        dbContext.Movies.Add(movie);
-        await dbContext.SaveChangesAsync();
-
-        var response = await _client.GetAsync($"/api/v1/Movies/{movie.Id}");
+        var response = await client.GetAsync("/api/v1/genres/movie");
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
-        Assert.True(
-            response.Headers.TryGetValues("api-supported-versions", out var versions),
-            "Expected the api-supported-versions response header.");
-
-        Assert.Contains("1.0", versions!);
+        Assert.Contains(
+            "1.0",
+            response.Headers.GetValues("api-supported-versions"));
     }
 
     [Fact]
-    public async Task UnauthenticatedRequest_ToProtectedEndpoint_Returns401()
+    public async Task AdminEndpoint_WithRegularUserToken_ReturnsForbiddenProblem()
     {
-        using var scope = _factory.Services.CreateScope();
-        var dbContext = scope.ServiceProvider.GetRequiredService<MovieFlixDbContext>();
-        await dbContext.Database.EnsureCreatedAsync();
+        var (client, _) = await CreateAuthenticatedClientAsync();
+        using var _client = client;
 
-        var response = await _client.GetAsync("/api/v1/me/watchlist");
+        var response = await client.PostAsync(
+            "/api/v1/admin/media/movie/550/refresh",
+            null);
 
-        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+        var problem = await ReadProblemAsync(response);
+        Assert.Equal(403, problem.GetProperty("status").GetInt32());
+        Assert.True(problem.TryGetProperty("traceId", out _));
     }
 
     [Fact]
-    public async Task AuthEndpoint_AfterExceedingRateLimit_Returns429()
+    public async Task AuthRateLimit_RejectsRequestsBeyondConfiguredLimit()
     {
-        // Override the (relaxed) test limit to prove the "auth" policy is
-        // actually enforced. The limiter short-circuits before the action
-        // runs, so no database or real credentials are required.
-        using var limitedFactory = _factory.WithWebHostBuilder(builder =>
+        using var limitedFactory = Factory.WithWebHostBuilder(builder =>
         {
             builder.UseSetting("RateLimiting:AuthPermitLimit", "2");
+            builder.UseSetting("RateLimiting:AuthWindowSeconds", "60");
         });
+
         using var client = limitedFactory.CreateClient();
 
-        HttpStatusCode? lastStatus = null;
-        for (var i = 0; i < 3; i++)
+        for (var attempt = 0; attempt < 2; attempt++)
         {
-            var response = await client.PostAsJsonAsync(
-                "/api/v1/Auth/login",
-                new { email = "nobody@example.com", password = "Password123!" });
+            var accepted = await client.PostAsJsonAsync(
+                "/api/v1/auth/login",
+                new
+                {
+                    email = "nobody@example.com",
+                    password = "Password1!"
+                });
 
-            lastStatus = response.StatusCode;
+            Assert.Equal(HttpStatusCode.Unauthorized, accepted.StatusCode);
         }
 
-        Assert.Equal(HttpStatusCode.TooManyRequests, lastStatus);
+        var rejected = await client.PostAsJsonAsync(
+            "/api/v1/auth/login",
+            new
+            {
+                email = "nobody@example.com",
+                password = "Password1!"
+            });
+
+        Assert.Equal(HttpStatusCode.TooManyRequests, rejected.StatusCode);
+        Assert.NotNull(rejected.Headers.RetryAfter);
+
+        var problem = await ReadProblemAsync(rejected);
+        Assert.Equal(429, problem.GetProperty("status").GetInt32());
+        Assert.True(problem.TryGetProperty("traceId", out _));
     }
 }

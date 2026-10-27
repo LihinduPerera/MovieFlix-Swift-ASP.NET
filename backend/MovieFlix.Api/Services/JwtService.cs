@@ -10,10 +10,14 @@ namespace MovieFlix.Api.Services;
 public class JwtService : IJwtService
 {
     private readonly JwtSettings _jwtSettings;
+    private readonly TimeProvider _timeProvider;
 
-    public JwtService(IOptions<JwtSettings> jwtOptions)
+    public JwtService(
+        IOptions<JwtSettings> jwtOptions,
+        TimeProvider timeProvider)
     {
         _jwtSettings = jwtOptions.Value;
+        _timeProvider = timeProvider;
     }
 
     public TimeSpan AccessTokenLifetime =>
@@ -25,6 +29,8 @@ public class JwtService : IJwtService
         string displayName,
         IEnumerable<string> roles)
     {
+        var now = _timeProvider.GetUtcNow().UtcDateTime;
+
         var claims = new List<Claim>
         {
             new(JwtRegisteredClaimNames.Sub, userId),
@@ -33,7 +39,6 @@ public class JwtService : IJwtService
             new(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
         };
 
-        // One role claim per role so [Authorize(Roles = "Admin")] works.
         claims.AddRange(
             roles.Select(role => new Claim(ClaimTypes.Role, role)));
 
@@ -48,11 +53,10 @@ public class JwtService : IJwtService
             issuer: _jwtSettings.Issuer,
             audience: _jwtSettings.Audience,
             claims: claims,
-            notBefore: DateTime.UtcNow,
-            expires: DateTime.UtcNow.Add(AccessTokenLifetime),
+            notBefore: now,
+            expires: now.Add(AccessTokenLifetime),
             signingCredentials: credentials);
 
-        return new JwtSecurityTokenHandler()
-            .WriteToken(token);
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }

@@ -1,0 +1,7 @@
+# Local developer overrides (API host, team, etc.)
+Config/Local.xcconfig
+*.xcuserstate
+xcuserdata/
+build/
+DerivedData/
+.DS_Store

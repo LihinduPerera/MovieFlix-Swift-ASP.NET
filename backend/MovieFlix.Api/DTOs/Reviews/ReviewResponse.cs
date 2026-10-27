@@ -1,20 +1,18 @@
+using MovieFlix.Api.DTOs.Media;
+
 namespace MovieFlix.Api.DTOs.Reviews
 {
     public class ReviewResponse
     {
         public int Id { get; set; }
 
-        public int MovieId { get; set; }
-
-        public int TmdbId { get; set; }
-
-        public string MovieTitle { get; set; } = string.Empty;
+        public MediaSummaryResponse Media { get; set; } = new();
 
         public string Content { get; set; } = string.Empty;
 
-        public string AuthorId { get; set; } = string.Empty;
-
         public string AuthorDisplayName { get; set; } = string.Empty;
+
+        public bool IsMine { get; set; }
 
         public DateTime CreatedAt { get; set; }
 

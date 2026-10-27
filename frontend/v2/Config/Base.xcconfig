@@ -1,0 +1,21 @@
+// Shared build settings for every configuration.
+//
+// Swift 6 with complete concurrency checking is required. The app target uses
+// MainActor default isolation for UI ergonomics; core networking and domain
+// types explicitly opt out with `nonisolated`.
+
+PRODUCT_NAME = $(TARGET_NAME)
+PRODUCT_BUNDLE_IDENTIFIER = com.LithiumStudios.MovieFlix
+MARKETING_VERSION = 1.0
+CURRENT_PROJECT_VERSION = 1
+
+SWIFT_VERSION = 6.0
+SWIFT_STRICT_CONCURRENCY = complete
+SWIFT_APPROACHABLE_CONCURRENCY = YES
+SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor
+
+IPHONEOS_DEPLOYMENT_TARGET = 26.2
+TARGETED_DEVICE_FAMILY = 1,2
+
+ENABLE_USER_SCRIPT_SANDBOXING = YES
+LOCALIZATION_PREFERS_STRING_CATALOGS = YES

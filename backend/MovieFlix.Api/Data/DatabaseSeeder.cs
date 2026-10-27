@@ -17,6 +17,7 @@ namespace MovieFlix.Api.Data
                 .GetRequiredService<RoleManager<IdentityRole>>();
             var userManager = scopedServices
                 .GetRequiredService<UserManager<ApplicationUser>>();
+            var timeProvider = scopedServices.GetRequiredService<TimeProvider>();
 
             // Apply pending migrations automatically (safe for SQLite in-memory
             // in tests as the connection is shared for the test factory).
@@ -39,7 +40,8 @@ namespace MovieFlix.Api.Data
                     userManager,
                     adminEmail,
                     adminPassword,
-                    adminDisplayName);
+                    adminDisplayName,
+                    timeProvider);
             }
         }
 
@@ -57,7 +59,8 @@ namespace MovieFlix.Api.Data
             UserManager<ApplicationUser> userManager,
             string email,
             string password,
-            string displayName)
+            string displayName,
+            TimeProvider timeProvider)
         {
             var normalized = email.Trim().ToLowerInvariant();
             var existing = await userManager.FindByEmailAsync(normalized);
@@ -73,6 +76,7 @@ namespace MovieFlix.Api.Data
                 return;
             }
 
+            var now = timeProvider.GetUtcNow().UtcDateTime;
             var user = new ApplicationUser
             {
                 UserName = normalized,
@@ -81,8 +85,8 @@ namespace MovieFlix.Api.Data
                 NormalizedUserName = normalized.ToUpperInvariant(),
                 DisplayName = displayName.Trim(),
                 EmailConfirmed = true,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                CreatedAt = now,
+                UpdatedAt = now
             };
 
             var result = await userManager.CreateAsync(user, password);

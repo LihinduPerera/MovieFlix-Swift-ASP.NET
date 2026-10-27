@@ -236,6 +236,10 @@ namespace MovieFlix.Api.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("TEXT");
 
@@ -245,12 +249,13 @@ namespace MovieFlix.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("UserId");
+                    b.HasIndex("UserId", "NormalizedName")
+                        .IsUnique();
 
                     b.ToTable("Collections");
                 });
 
-            modelBuilder.Entity("MovieFlix.Api.Models.CollectionMovie", b =>
+            modelBuilder.Entity("MovieFlix.Api.Models.CollectionItem", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -262,17 +267,51 @@ namespace MovieFlix.Api.Migrations
                     b.Property<int>("CollectionId")
                         .HasColumnType("INTEGER");
 
-                    b.Property<int>("MovieId")
+                    b.Property<int>("MediaItemId")
                         .HasColumnType("INTEGER");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MovieId");
+                    b.HasIndex("MediaItemId");
 
-                    b.HasIndex("CollectionId", "MovieId")
+                    b.HasIndex("CollectionId", "MediaItemId")
                         .IsUnique();
 
-                    b.ToTable("CollectionMovies");
+                    b.ToTable("CollectionItems");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.EpisodeWatchState", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Completed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ProgressSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TvEpisodeId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("WatchedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TvEpisodeId");
+
+                    b.HasIndex("UserId", "TvEpisodeId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "WatchedAt");
+
+                    b.ToTable("EpisodeWatchStates");
                 });
 
             modelBuilder.Entity("MovieFlix.Api.Models.Favorite", b =>
@@ -284,7 +323,7 @@ namespace MovieFlix.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("MovieId")
+                    b.Property<int>("MediaItemId")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("UserId")
@@ -293,22 +332,103 @@ namespace MovieFlix.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MovieId");
+                    b.HasIndex("MediaItemId");
 
-                    b.HasIndex("UserId", "MovieId")
+                    b.HasIndex("UserId", "MediaItemId")
                         .IsUnique();
 
                     b.ToTable("Favorites");
                 });
 
-            modelBuilder.Entity("MovieFlix.Api.Models.Movie", b =>
+            modelBuilder.Entity("MovieFlix.Api.Models.Genre", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("MediaType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("TmdbId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TmdbId", "MediaType")
+                        .IsUnique();
+
+                    b.ToTable("Genres");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.MediaItem", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Adult")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BackdropPath")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CachedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("FirstAirDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Homepage")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("LastAirDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("MediaType")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("NumberOfEpisodes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("NumberOfSeasons")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("OriginalLanguage")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("OriginalTitle")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Overview")
                         .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<double>("Popularity")
+                        .HasColumnType("REAL");
+
+                    b.Property<string>("PosterPath")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateOnly?>("ReleaseDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("RuntimeMinutes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Status")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Tagline")
                         .HasColumnType("TEXT");
 
                     b.Property<string>("Title")
@@ -318,17 +438,40 @@ namespace MovieFlix.Api.Migrations
                     b.Property<int>("TmdbId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<double>("VoteAverage")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("VoteCount")
+                        .HasColumnType("INTEGER");
+
                     b.HasKey("Id");
 
-                    b.HasIndex("Title");
+                    b.HasIndex("CachedAt");
 
-                    b.HasIndex("TmdbId")
+                    b.HasIndex("MediaType", "Title");
+
+                    b.HasIndex("TmdbId", "MediaType")
                         .IsUnique();
 
-                    b.ToTable("Movies");
+                    b.ToTable("MediaItems");
                 });
 
-            modelBuilder.Entity("MovieFlix.Api.Models.MovieRating", b =>
+            modelBuilder.Entity("MovieFlix.Api.Models.MediaItemGenre", b =>
+                {
+                    b.Property<int>("MediaItemId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("GenreId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("MediaItemId", "GenreId");
+
+                    b.HasIndex("GenreId");
+
+                    b.ToTable("MediaItemGenres");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.MediaRating", b =>
                 {
                     b.Property<int>("Id")
                         .ValueGeneratedOnAdd()
@@ -337,7 +480,7 @@ namespace MovieFlix.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("MovieId")
+                    b.Property<int>("MediaItemId")
                         .HasColumnType("INTEGER");
 
                     b.Property<int>("Rating")
@@ -352,12 +495,57 @@ namespace MovieFlix.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MovieId");
+                    b.HasIndex("MediaItemId");
 
-                    b.HasIndex("UserId", "MovieId")
+                    b.HasIndex("UserId", "MediaItemId")
                         .IsUnique();
 
-                    b.ToTable("MovieRatings");
+                    b.ToTable("MediaRatings");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.MediaWatchState", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("Completed")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("LastEpisodeNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("LastSeasonNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("LastTvEpisodeId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("LastWatchedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("MediaItemId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("ProgressSeconds")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("LastTvEpisodeId");
+
+                    b.HasIndex("MediaItemId");
+
+                    b.HasIndex("UserId", "LastWatchedAt");
+
+                    b.HasIndex("UserId", "MediaItemId")
+                        .IsUnique();
+
+                    b.ToTable("MediaWatchStates");
                 });
 
             modelBuilder.Entity("MovieFlix.Api.Models.RefreshToken", b =>
@@ -409,7 +597,7 @@ namespace MovieFlix.Api.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("MovieId")
+                    b.Property<int>("MediaItemId")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("UpdatedAt")
@@ -421,9 +609,9 @@ namespace MovieFlix.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MovieId", "CreatedAt");
+                    b.HasIndex("MediaItemId", "CreatedAt");
 
-                    b.HasIndex("UserId", "MovieId")
+                    b.HasIndex("UserId", "MediaItemId")
                         .IsUnique();
 
                     b.ToTable("Reviews");
@@ -458,6 +646,97 @@ namespace MovieFlix.Api.Migrations
                     b.HasIndex("UserId", "SearchedAt");
 
                     b.ToTable("SearchHistoryEntries");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.TvEpisode", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly?>("AirDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EpisodeNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MediaItemId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Overview")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("RuntimeMinutes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("SeasonNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("StillPath")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("TmdbId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("TvSeasonId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<double>("VoteAverage")
+                        .HasColumnType("REAL");
+
+                    b.Property<int>("VoteCount")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TmdbId");
+
+                    b.HasIndex("TvSeasonId");
+
+                    b.HasIndex("MediaItemId", "SeasonNumber", "EpisodeNumber")
+                        .IsUnique();
+
+                    b.ToTable("TvEpisodes");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.TvSeason", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateOnly?>("AirDate")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("EpisodeCount")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("MediaItemId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Overview")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("PosterPath")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SeasonNumber")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MediaItemId", "SeasonNumber")
+                        .IsUnique();
+
+                    b.ToTable("TvSeasons");
                 });
 
             modelBuilder.Entity("MovieFlix.Api.Models.UserPreferences", b =>
@@ -505,40 +784,6 @@ namespace MovieFlix.Api.Migrations
                     b.ToTable("UserPreferences");
                 });
 
-            modelBuilder.Entity("MovieFlix.Api.Models.WatchHistoryEntry", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<bool>("Completed")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("MovieId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<int>("ProgressSeconds")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("UserId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("WatchedAt")
-                        .HasColumnType("TEXT");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MovieId");
-
-                    b.HasIndex("UserId", "MovieId")
-                        .IsUnique();
-
-                    b.HasIndex("UserId", "WatchedAt");
-
-                    b.ToTable("WatchHistoryEntries");
-                });
-
             modelBuilder.Entity("MovieFlix.Api.Models.WatchlistItem", b =>
                 {
                     b.Property<int>("Id")
@@ -548,7 +793,7 @@ namespace MovieFlix.Api.Migrations
                     b.Property<DateTime>("AddedAt")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("MovieId")
+                    b.Property<int>("MediaItemId")
                         .HasColumnType("INTEGER");
 
                     b.Property<string>("UserId")
@@ -557,9 +802,9 @@ namespace MovieFlix.Api.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MovieId");
+                    b.HasIndex("MediaItemId");
 
-                    b.HasIndex("UserId", "MovieId")
+                    b.HasIndex("UserId", "MediaItemId")
                         .IsUnique();
 
                     b.ToTable("WatchlistItems");
@@ -627,31 +872,31 @@ namespace MovieFlix.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MovieFlix.Api.Models.CollectionMovie", b =>
+            modelBuilder.Entity("MovieFlix.Api.Models.CollectionItem", b =>
                 {
                     b.HasOne("MovieFlix.Api.Models.Collection", "Collection")
-                        .WithMany("Movies")
+                        .WithMany("Items")
                         .HasForeignKey("CollectionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.HasOne("MovieFlix.Api.Models.Movie", "Movie")
+                    b.HasOne("MovieFlix.Api.Models.MediaItem", "MediaItem")
                         .WithMany()
-                        .HasForeignKey("MovieId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasForeignKey("MediaItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.Navigation("Collection");
 
-                    b.Navigation("Movie");
+                    b.Navigation("MediaItem");
                 });
 
-            modelBuilder.Entity("MovieFlix.Api.Models.Favorite", b =>
+            modelBuilder.Entity("MovieFlix.Api.Models.EpisodeWatchState", b =>
                 {
-                    b.HasOne("MovieFlix.Api.Models.Movie", "Movie")
+                    b.HasOne("MovieFlix.Api.Models.TvEpisode", "TvEpisode")
                         .WithMany()
-                        .HasForeignKey("MovieId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasForeignKey("TvEpisodeId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("MovieFlix.Api.Models.ApplicationUser", "User")
@@ -660,17 +905,17 @@ namespace MovieFlix.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Movie");
+                    b.Navigation("TvEpisode");
 
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MovieFlix.Api.Models.MovieRating", b =>
+            modelBuilder.Entity("MovieFlix.Api.Models.Favorite", b =>
                 {
-                    b.HasOne("MovieFlix.Api.Models.Movie", "Movie")
+                    b.HasOne("MovieFlix.Api.Models.MediaItem", "MediaItem")
                         .WithMany()
-                        .HasForeignKey("MovieId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasForeignKey("MediaItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("MovieFlix.Api.Models.ApplicationUser", "User")
@@ -679,7 +924,71 @@ namespace MovieFlix.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Movie");
+                    b.Navigation("MediaItem");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.MediaItemGenre", b =>
+                {
+                    b.HasOne("MovieFlix.Api.Models.Genre", "Genre")
+                        .WithMany("MediaItems")
+                        .HasForeignKey("GenreId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("MovieFlix.Api.Models.MediaItem", "MediaItem")
+                        .WithMany("Genres")
+                        .HasForeignKey("MediaItemId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Genre");
+
+                    b.Navigation("MediaItem");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.MediaRating", b =>
+                {
+                    b.HasOne("MovieFlix.Api.Models.MediaItem", "MediaItem")
+                        .WithMany()
+                        .HasForeignKey("MediaItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MovieFlix.Api.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("MediaItem");
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.MediaWatchState", b =>
+                {
+                    b.HasOne("MovieFlix.Api.Models.TvEpisode", "LastTvEpisode")
+                        .WithMany()
+                        .HasForeignKey("LastTvEpisodeId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.HasOne("MovieFlix.Api.Models.MediaItem", "MediaItem")
+                        .WithMany()
+                        .HasForeignKey("MediaItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MovieFlix.Api.Models.ApplicationUser", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("LastTvEpisode");
+
+                    b.Navigation("MediaItem");
 
                     b.Navigation("User");
                 });
@@ -697,10 +1006,10 @@ namespace MovieFlix.Api.Migrations
 
             modelBuilder.Entity("MovieFlix.Api.Models.Review", b =>
                 {
-                    b.HasOne("MovieFlix.Api.Models.Movie", "Movie")
+                    b.HasOne("MovieFlix.Api.Models.MediaItem", "MediaItem")
                         .WithMany()
-                        .HasForeignKey("MovieId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasForeignKey("MediaItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("MovieFlix.Api.Models.ApplicationUser", "User")
@@ -709,7 +1018,7 @@ namespace MovieFlix.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Movie");
+                    b.Navigation("MediaItem");
 
                     b.Navigation("User");
                 });
@@ -725,6 +1034,36 @@ namespace MovieFlix.Api.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("MovieFlix.Api.Models.TvEpisode", b =>
+                {
+                    b.HasOne("MovieFlix.Api.Models.MediaItem", "MediaItem")
+                        .WithMany()
+                        .HasForeignKey("MediaItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("MovieFlix.Api.Models.TvSeason", "TvSeason")
+                        .WithMany("Episodes")
+                        .HasForeignKey("TvSeasonId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("MediaItem");
+
+                    b.Navigation("TvSeason");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.TvSeason", b =>
+                {
+                    b.HasOne("MovieFlix.Api.Models.MediaItem", "MediaItem")
+                        .WithMany("Seasons")
+                        .HasForeignKey("MediaItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.Navigation("MediaItem");
+                });
+
             modelBuilder.Entity("MovieFlix.Api.Models.UserPreferences", b =>
                 {
                     b.HasOne("MovieFlix.Api.Models.ApplicationUser", "User")
@@ -736,31 +1075,12 @@ namespace MovieFlix.Api.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("MovieFlix.Api.Models.WatchHistoryEntry", b =>
-                {
-                    b.HasOne("MovieFlix.Api.Models.Movie", "Movie")
-                        .WithMany()
-                        .HasForeignKey("MovieId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("MovieFlix.Api.Models.ApplicationUser", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Movie");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("MovieFlix.Api.Models.WatchlistItem", b =>
                 {
-                    b.HasOne("MovieFlix.Api.Models.Movie", "Movie")
+                    b.HasOne("MovieFlix.Api.Models.MediaItem", "MediaItem")
                         .WithMany()
-                        .HasForeignKey("MovieId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasForeignKey("MediaItemId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
                     b.HasOne("MovieFlix.Api.Models.ApplicationUser", "User")
@@ -769,14 +1089,31 @@ namespace MovieFlix.Api.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Movie");
+                    b.Navigation("MediaItem");
 
                     b.Navigation("User");
                 });
 
             modelBuilder.Entity("MovieFlix.Api.Models.Collection", b =>
                 {
-                    b.Navigation("Movies");
+                    b.Navigation("Items");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.Genre", b =>
+                {
+                    b.Navigation("MediaItems");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.MediaItem", b =>
+                {
+                    b.Navigation("Genres");
+
+                    b.Navigation("Seasons");
+                });
+
+            modelBuilder.Entity("MovieFlix.Api.Models.TvSeason", b =>
+                {
+                    b.Navigation("Episodes");
                 });
 #pragma warning restore 612, 618
         }

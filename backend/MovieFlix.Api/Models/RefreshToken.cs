@@ -1,10 +1,8 @@
 namespace MovieFlix.Api.Models;
 
 /// <summary>
-/// A persisted refresh token belonging to a user. Refresh tokens let the
-/// client obtain a new short-lived access token without logging in again.
-/// Tokens are stored <b>hashed</b> so a database leak does not expose
-/// usable credentials.
+/// A persisted refresh token belonging to a user. Tokens are stored hashed so
+/// a database leak does not expose usable credentials.
 /// </summary>
 public class RefreshToken
 {
@@ -26,8 +24,4 @@ public class RefreshToken
     public string? ReplacedByTokenHash { get; set; }
 
     public ApplicationUser User { get; set; } = null!;
-
-    public bool IsExpired => DateTime.UtcNow >= ExpiresAt;
-
-    public bool IsActive => RevokedAt is null && !IsExpired;
 }

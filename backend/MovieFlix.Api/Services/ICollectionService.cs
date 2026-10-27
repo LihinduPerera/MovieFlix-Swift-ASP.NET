@@ -1,42 +1,50 @@
 using MovieFlix.Api.DTOs.Collections;
+using MovieFlix.Api.DTOs.Common;
+using MovieFlix.Api.Models;
 
 namespace MovieFlix.Api.Services
 {
     public interface ICollectionService
     {
-        Task<List<CollectionSummaryResponse>> GetUserCollectionsAsync(string userId);
+        Task<PagedResponse<CollectionSummaryResponse>> GetUserCollectionsAsync(
+            string userId,
+            int page,
+            int pageSize,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>Returns a collection with its movies; null when not found.</summary>
-        Task<CollectionDetailResponse?> GetByIdAsync(int collectionId);
+        Task<CollectionDetailResponse?> GetByIdAsync(
+            int collectionId,
+            string? userId,
+            CancellationToken cancellationToken = default);
 
         Task<CollectionSummaryResponse> CreateAsync(
-            string userId, string name, string description);
+            string userId,
+            CreateCollectionRequest request,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Updates a collection. Returns null when not found; throws
-        /// <see cref="Exceptions.ForbiddenAccessException"/> when not owned.
-        /// </summary>
-        Task<CollectionSummaryResponse?> UpdateAsync(
-            string userId, int collectionId, string name, string description);
+        Task<CollectionSummaryResponse> UpdateAsync(
+            string userId,
+            int collectionId,
+            UpdateCollectionRequest request,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Deletes a collection. Returns false when not found; throws
-        /// <see cref="Exceptions.ForbiddenAccessException"/> when not owned.
-        /// </summary>
-        Task<bool> DeleteAsync(string userId, int collectionId);
+        Task DeleteAsync(
+            string userId,
+            int collectionId,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Adds a movie to a collection. Returns the updated detail; null when
-        /// the collection or movie does not exist; throws Forbidden when not
-        /// owned and DuplicateResource when the movie is already present.
-        /// </summary>
-        Task<CollectionDetailResponse?> AddMovieAsync(
-            string userId, int collectionId, int movieId);
+        Task<CollectionDetailResponse> AddItemAsync(
+            string userId,
+            int collectionId,
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken = default);
 
-        /// <summary>
-        /// Removes a movie from a collection. Returns false when not present;
-        /// throws Forbidden when not owned.
-        /// </summary>
-        Task<bool> RemoveMovieAsync(string userId, int collectionId, int movieId);
+        Task RemoveItemAsync(
+            string userId,
+            int collectionId,
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken = default);
     }
 }

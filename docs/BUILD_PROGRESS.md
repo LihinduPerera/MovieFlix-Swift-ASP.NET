@@ -1,10 +1,15 @@
-# MovieFlix Backend — Build Progress
+﻿# MovieFlix Backend — Build Progress
 
 > Living log of the backend build-out. **Never use README.md for this** — README is the
 > public overview; this is the working diary (what we did, where we stopped, what's left).
 
 **Branch:** `dev` (never sync/push, never touch `main`)
 **Started:** 2026-10-15
+
+**Current state (2026-10-26):** unified movies + TV API on **.NET 9**, one clean
+`InitialMediaSchema` migration, full episode tracking and library parity, and
+**76 passing tests**. The phase log below is historical; the entries from
+2026-10-25 onward describe the current system.
 
 ---
 
@@ -191,3 +196,61 @@
   limiting, backups, hardening).
 - Tests: **54 passing**, build clean with the extra provider package.
 - ⚠️ **Still outstanding:** rotate the leaked TMDB token on themoviedb.org.
+
+### 2026-10-25 — Unified movies+TV migration
+- **.NET 9** confirmed: API and tests target `net9.0`; SDK 9.0.318 applied.
+- **Schema reset**: deleted the old movie-only migrations and local `.db*`
+  files; generated a single clean `InitialMediaSchema` migration in
+  `backend/MovieFlix.Api/Migrations/` (namespace `MovieFlix.Api.Migrations`).
+  The duplicate `Data/Migrations` snapshot was removed; there is one migration
+  set only.
+- **Domain**: unified `MediaItem` (`movie`/`tv`), TV seasons/episodes, and user
+  links refactored to `MediaItemId` (`Favorite`, `WatchlistItem`,
+  `MediaRating`, `Review`, `CollectionItem`, `MediaWatchState`,
+  `EpisodeWatchState`). `MediaType` is persisted as lowercase `movie`/`tv` by a
+  value converter on `MediaItem` and `Genre`.
+- **TMDB**: multi-search/feeds/discover/details/seasons/genres; shared media
+  cache with concurrent-insert recovery; episode metadata cached per season.
+- **API**: public media routes for movies + TV, `/state`, community ratings,
+  reviews; `/me` library parity; episode progress, next-episode resolution, and
+  Continue Watching; idempotent membership writes (`PUT` 200 / `DELETE` 204).
+- **Details mapping limits**: top 20 cast, key crew jobs (max 20), YouTube-only
+  videos, first 12 similar titles, non-special seasons only.
+- **Validation/errors**: route `mediaType` uses enum model binding, so an
+  invalid value returns **400 Problem Details** (the old route constraint that
+  produced 404 was removed). Consistent ProblemDetails, validation `errors`
+  dictionaries, rate limiting, forwarded headers, compression.
+- **Caching**: named output-cache policies for search (5 min), trending/feeds/
+  discover (10 min), details (1 h), season summaries (6 h), genres (24 h).
+  Season **details** are deliberately uncached because they include user
+  progress.
+- **Tests**: hermetic suite with fake `ITmdbService` and SQLite-backed
+  `WebApplicationFactory`; no external network calls.
+- **Docs**: `docs/API_CONTRACT.md`, `docs/openapi.json` exported from the
+  running Swagger endpoint, README, Operations notes, `scripts/smoke.ps1`.
+
+### 2026-10-26 — Contract audit and docs pass
+- **Runtime audit**: verified every controller route/DTO/status against the
+  contract; fixed the contract's token shape (`accessTokenExpiresAt`,
+  `refreshTokenExpiresAt`, `tokenType`, `user`; no `expiresIn`), added the
+  missing `/media/{mediaType}/discover` route, and documented the real
+  validation limits, cache TTLs, privacy rules, and idempotency behavior.
+- **Error translation tests**: TMDB 429 (delta/date `Retry-After`), 500→502,
+  timeout→503, and 404→404.
+- **Integration coverage added**: TMDB 429/502 through the API, type-specific
+  search, details mapping caps, lowercase media-type persistence, invalid route
+  media type → 400, and admin metadata refresh preserving watch progress and
+  episode states.
+- **Schema verification**: fresh SQLite database created from
+  `InitialMediaSchema`; tables and lowercase `MediaType` values verified.
+- **Tests**: **76 passed, 0 failed**.
+- **Build**: `dotnet build` succeeds. Local `NU1900` warnings only reflect
+  unreachable NuGet vulnerability data on the offline dev machine; CI restores
+  with network and builds with `-warnaserror`.
+- **Docs**: rewrote `docs/API_CONTRACT.md`; refreshed README, this log, and
+  `docs/OPERATIONS.md` (health aliases, cache TTLs, warm-up shape, migration
+  reset, proxy troubleshooting); hardened `scripts/smoke.ps1`.
+- ⚠️ **Still outstanding:** rotate the previously exposed TMDB token at
+  <https://www.themoviedb.org/settings/api>.
+
+

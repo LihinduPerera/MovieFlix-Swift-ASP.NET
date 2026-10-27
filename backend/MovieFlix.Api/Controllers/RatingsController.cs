@@ -2,96 +2,72 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using MovieFlix.Api.DTOs.Ratings;
+using MovieFlix.Api.Models;
 using MovieFlix.Api.Services;
 
 namespace MovieFlix.Api.Controllers
 {
     [ApiController]
     [ApiVersion("1.0")]
-    [Route("api/v1/[controller]")]
-    public class RatingsController : ControllerBase
+    [Route("api/v1/me/ratings")]
+    [Authorize]
+    public class RatingsController : ApiControllerBase
     {
         private readonly IRatingService _ratingService;
-        private readonly ICurrentUserService _currentUser;
 
-        public RatingsController(
-            IRatingService ratingService,
-            ICurrentUserService currentUser)
+        public RatingsController(IRatingService ratingService)
         {
             _ratingService = ratingService;
-            _currentUser = currentUser;
         }
 
-        /// <summary>Creates or updates the current user's rating for a movie.</summary>
-        [Authorize]
-        [HttpPut("/api/v1/me/ratings/{movieId:int}")]
-        public async Task<IActionResult> Rate(
-            int movieId, RateMovieRequest request)
+        [HttpGet("{mediaType}/{tmdbId:int}")]
+        [ProducesResponseType(typeof(MediaRatingResponse), StatusCodes.Status200OK)]
+        [ProducesResponseType(StatusCodes.Status404NotFound)]
+        public async Task<ActionResult<MediaRatingResponse>> Get(
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken)
         {
-            var result = await _ratingService.RateAsync(
-                _currentUser.UserId, movieId, request.Rating);
+            var rating = await _ratingService.GetMyRatingAsync(
+                RequireUserId(),
+                mediaType,
+                tmdbId,
+                cancellationToken);
 
-            if (result is null)
-            {
-                return NotFound();
-            }
-
-            return Ok(result);
+            return rating is null
+                ? NotFoundProblem("You have not rated this title.")
+                : Ok(rating);
         }
 
-        /// <summary>Gets the current user's rating for a movie.</summary>
-        [Authorize]
-        [HttpGet("/api/v1/me/ratings/{movieId:int}")]
-        public async Task<IActionResult> GetMyRating(int movieId)
+        [HttpPut("{mediaType}/{tmdbId:int}")]
+        public async Task<ActionResult<MediaRatingResponse>> Rate(
+            MediaType mediaType,
+            int tmdbId,
+            [FromBody] RatingRequest request,
+            CancellationToken cancellationToken)
         {
-            var result = await _ratingService.GetMyRatingAsync(
-                _currentUser.UserId, movieId);
-
-            if (result is null)
-            {
-                return NotFound();
-            }
-
-            return Ok(result);
+            return Ok(await _ratingService.RateAsync(
+                RequireUserId(),
+                mediaType,
+                tmdbId,
+                request.Rating,
+                cancellationToken));
         }
 
-        /// <summary>Removes the current user's rating for a movie.</summary>
-        [Authorize]
-        [HttpDelete("/api/v1/me/ratings/{movieId:int}")]
-        public async Task<IActionResult> Remove(int movieId)
+        [HttpDelete("{mediaType}/{tmdbId:int}")]
+        [ProducesResponseType(StatusCodes.Status204NoContent)]
+        public async Task<IActionResult> Remove(
+            MediaType mediaType,
+            int tmdbId,
+            CancellationToken cancellationToken)
         {
-            var removed = await _ratingService.RemoveAsync(
-                _currentUser.UserId, movieId);
-
-            if (!removed)
-            {
-                return NotFound();
-            }
+            await _ratingService.RemoveAsync(
+                RequireUserId(),
+                mediaType,
+                tmdbId,
+                cancellationToken);
 
             return NoContent();
-        }
-
-        /// <summary>
-        /// Community average rating for a movie (includes the caller's own
-        /// rating when authenticated).
-        /// </summary>
-        [HttpGet("/api/v1/movies/{movieId:int}/ratings")]
-        public async Task<IActionResult> GetCommunityRating(int movieId)
-        {
-            // The caller may be anonymous; only attach their rating if signed in.
-            var userId = User.Identity?.IsAuthenticated == true
-                ? _currentUser.UserId
-                : null;
-
-            var result = await _ratingService.GetCommunityRatingAsync(
-                userId, movieId);
-
-            if (result is null)
-            {
-                return NotFound();
-            }
-
-            return Ok(result);
         }
     }
 }
