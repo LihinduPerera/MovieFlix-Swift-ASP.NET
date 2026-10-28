@@ -61,16 +61,20 @@ nonisolated enum MFColor {
         endPoint: .bottomTrailing
     )
 
-    static let heroScrim = LinearGradient(
-        stops: [
-            .init(color: .clear, location: 0.30),
-            .init(color: .black.opacity(0.30), location: 0.56),
-            .init(color: .black.opacity(0.78), location: 0.80),
-            .init(color: canvas, location: 1.0)
-        ],
-        startPoint: .top,
-        endPoint: .bottom
-    )
+    static var heroScrim: LinearGradient {
+        LinearGradient(
+            stops: [
+                .init(color: Color.black.opacity(0.08), location: 0.0),
+                .init(color: .clear, location: 0.25),
+                .init(color: .clear, location: 0.5),
+                .init(color: Color.black.opacity(0.48), location: 0.76),
+                .init(color: Color.black.opacity(0.88), location: 0.93),
+                .init(color: canvas, location: 1.0)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
 
     static let posterScrim = LinearGradient(
         stops: [

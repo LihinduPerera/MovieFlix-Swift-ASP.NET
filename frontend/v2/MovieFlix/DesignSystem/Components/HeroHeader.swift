@@ -15,22 +15,37 @@ struct HeroHeader: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            RemoteImage(url: imageURL, label: "\(media.title) backdrop")
-                .frame(maxWidth: .infinity)
-                .clipped()
+            Button(action: onDetails) {
+                RemoteImage(url: imageURL, label: "\(media.title) backdrop")
+                    .frame(maxWidth: .infinity)
+                    .clipped()
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("View details for \(media.title)")
 
             LinearGradient(
-                stops: [
-                    .init(color: .black.opacity(0.24), location: 0),
-                    .init(color: .clear, location: 0.24),
-                    .init(color: .clear, location: 0.38)
+                colors: [
+                    Color.black.opacity(0.65),
+                    .clear
                 ],
                 startPoint: .top,
                 endPoint: .bottom
             )
+            .frame(height: heroHeight * 0.32)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .allowsHitTesting(false)
 
-            MFColor.heroScrim
-                .allowsHitTesting(false)
+            LinearGradient(
+                stops: [
+                    .init(color: .clear, location: 0.0),
+                    .init(color: Color.black.opacity(0.4), location: 0.45),
+                    .init(color: Color.black.opacity(0.85), location: 0.8),
+                    .init(color: Color.black, location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .allowsHitTesting(false)
 
             VStack(alignment: .leading, spacing: MFSpace.sm) {
                 HStack(spacing: 6) {
@@ -39,17 +54,24 @@ struct HeroHeader: View {
                         .frame(width: 6, height: 6)
                     Text("Featured")
                         .mfText(.overline)
-                        .foregroundStyle(MFColor.textSecondary)
+                        .foregroundStyle(.white)
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel("Featured title")
 
-                Text(media.title)
-                    .mfText(.display)
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.72)
-                    .frame(maxWidth: 680, alignment: .leading)
-                    .accessibilityAddTraits(.isHeader)
+                Button(action: onDetails) {
+                    Text(media.title)
+                        .mfText(.display)
+                        .foregroundStyle(.white)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.72)
+                        .frame(maxWidth: 680, alignment: .leading)
+                        .multilineTextAlignment(.leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(.isHeader)
+                .accessibilityHint("View details")
 
                 HStack(spacing: MFSpace.xs) {
                     RatingBadge(value: media.voteAverage, style: .prominent)
@@ -64,7 +86,7 @@ struct HeroHeader: View {
                 if !media.overview.isEmpty {
                     Text(media.overview)
                         .mfText(.callout)
-                        .foregroundStyle(MFColor.textSecondary)
+                        .foregroundStyle(.white.opacity(0.92))
                         .lineLimit(3)
                         .frame(maxWidth: 560, alignment: .leading)
                         .fixedSize(horizontal: false, vertical: true)
@@ -110,13 +132,14 @@ struct HeroHeader: View {
                             .frame(maxWidth: 220)
                         Text("\(Int((min(max(progress, 0), 1) * 100).rounded()))% watched")
                             .mfText(.caption)
-                            .foregroundStyle(MFColor.textTertiary)
+                            .foregroundStyle(.white.opacity(0.8))
                     }
                     .accessibilityElement(children: .combine)
                 }
             }
             .padding(.horizontal, MFSpace.lg)
             .padding(.bottom, MFSpace.xxl)
+            .padding(.top, heroHeight * 0.35)
             .frame(maxWidth: MFSize.contentMaxWidth, alignment: .leading)
         }
         .frame(height: heroHeight)
