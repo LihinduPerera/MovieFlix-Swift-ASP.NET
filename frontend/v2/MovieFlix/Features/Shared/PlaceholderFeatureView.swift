@@ -70,7 +70,7 @@ struct ConfigurationErrorView: View {
                         VStack(alignment: .leading, spacing: MFSpace.xs) {
                             Text("How to fix")
                                 .mfText(.label)
-                            Text("Open Config/Debug.xcconfig and set API_BASE_URL to your backend, for example https://10.35.255.69:7014. Then rebuild the app.")
+                            Text("Open Config/Debug.xcconfig and set API_BASE_URL to your backend, for example https://192.168.24.60:7014. Then rebuild the app.")
                                 .mfText(.callout)
                                 .foregroundStyle(MFColor.textSecondary)
                                 .fixedSize(horizontal: false, vertical: true)

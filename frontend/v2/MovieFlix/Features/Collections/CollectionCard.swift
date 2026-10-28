@@ -92,7 +92,7 @@ struct CollectionCover: View {
     }
 
     private func tile(_ url: URL) -> some View {
-        RemoteImage(url: url, label: nil)
+        RemoteImage(url: url, label: nil, allowsRetryOnTap: false)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .clipped()
     }

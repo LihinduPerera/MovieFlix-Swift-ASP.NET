@@ -36,7 +36,7 @@ struct MediaPosterCard: View {
 
     private var poster: some View {
         ZStack(alignment: .bottom) {
-            RemoteImage(url: imageURL, label: "\(media.title) poster")
+            RemoteImage(url: imageURL, label: "\(media.title) poster", allowsRetryOnTap: false)
                 .clipShape(RoundedRectangle(cornerRadius: MFRadius.poster, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: MFRadius.poster, style: .continuous)
