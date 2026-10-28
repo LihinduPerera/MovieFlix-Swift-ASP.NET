@@ -556,7 +556,7 @@ private enum AuthField: Hashable, CaseIterable {
 
 #Preview {
     let configuration = AppConfiguration(
-        apiBaseURL: URL(string: "https://10.35.255.69:7014")!,
+        apiBaseURL: URL(string: "https://192.168.24.60:7014")!,
         imageBaseURL: URL(string: "https://image.tmdb.org/t/p")!,
         environment: .preview,
         appVersion: "1.0",

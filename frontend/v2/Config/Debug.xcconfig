@@ -8,7 +8,7 @@
 // network. That Kestrel instance serves plain HTTP; Debug's ATS exception
 // allows it. Use Config/Local.xcconfig for an HTTPS or different host.
 // Note the `$()` between the two slashes: xcconfig treats `//` as a comment.
-API_BASE_URL = http:/$()/10.35.255.69:7014
+API_BASE_URL = http:/$()/192.168.24.60:7014
 
 // TMDB image CDN root. Individual DTOs only contain relative poster paths.
 TMDB_IMAGE_BASE_URL = https:/$()/image.tmdb.org/t/p

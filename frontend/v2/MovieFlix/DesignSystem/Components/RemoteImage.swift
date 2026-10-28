@@ -18,6 +18,9 @@ struct RemoteImage: View {
     var label: String?
     var contentMode: ContentMode = .fill
     var showsLoadingShimmer = true
+    /// Whether tapping a failed image retries loading it. Disable this when the
+    /// image sits inside a tappable card so the card's button receives the tap.
+    var allowsRetryOnTap = true
 
     @Environment(\.imagePipeline) private var pipeline
     @Environment(\.displayScale) private var displayScale
@@ -45,10 +48,9 @@ struct RemoteImage: View {
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
             .contentShape(Rectangle())
-            .onTapGesture {
-                guard didFail else { return }
+            .modifier(RetryImageTapModifier(isEnabled: didFail && allowsRetryOnTap) {
                 attempt += 1
-            }
+            })
             .task(id: RemoteImageLoadKey(
                 url: url,
                 width: Int(proxy.size.width.rounded()),
@@ -62,8 +64,8 @@ struct RemoteImage: View {
         .accessibilityElement()
         .accessibilityLabel(label ?? "Image")
         .accessibilityHidden(label == nil)
-        .accessibilityAddTraits(didFail ? .isButton : [])
-        .accessibilityHint(didFail ? "Retry loading the image" : "")
+        .accessibilityAddTraits(didFail && allowsRetryOnTap ? .isButton : [])
+        .accessibilityHint(didFail && allowsRetryOnTap ? "Retry loading the image" : "")
         .animation(reduceMotion ? nil : .easeOut(duration: 0.28), value: image != nil)
     }
 
@@ -86,6 +88,19 @@ struct RemoteImage: View {
         } catch {
             guard !Task.isCancelled else { return }
             didFail = true
+        }
+    }
+}
+
+private struct RetryImageTapModifier: ViewModifier {
+    let isEnabled: Bool
+    let retry: () -> Void
+
+    func body(content: Content) -> some View {
+        if isEnabled {
+            content.onTapGesture(perform: retry)
+        } else {
+            content
         }
     }
 }
